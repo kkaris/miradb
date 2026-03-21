@@ -1,4 +1,5 @@
 from flask import Flask
+import click
 from .explorer_ui import explorer_blueprint
 
 app = Flask(__name__)
@@ -13,7 +14,13 @@ def add_no_cache(response):
     response.headers["Expires"] = "0"
     return response
 
+@click.command()
+@click.option("--host", default="0.0.0.0", show_default=True, help="Address to bind the server to.")
+@click.option("--port", default=5000, type=int, show_default=True, help="Port to run the server on.")
+@click.option("--debug/--no-debug", default=False, show_default=True, help="Enable Flask debug mode.")
+def main(host, port, debug):
+    app.run(host=host, port=port, debug=debug, use_reloader=False)
+
+
 if __name__ == "__main__":
-    import sys
-    debug = len(sys.argv) > 1 and sys.argv[1].lower() == "debug"
-    app.run(debug=debug, use_reloader=False, port=5000)
+    main()
