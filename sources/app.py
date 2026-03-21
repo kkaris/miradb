@@ -7,12 +7,19 @@ app = Flask(__name__)
 
 app.register_blueprint(explorer_blueprint)
 
+
+@app.route("/health")
+def health():
+    return "OK", 200
+
+
 @app.after_request
 def add_no_cache(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
 
 @click.command()
 @click.option("--host", default="0.0.0.0", show_default=True, help="Address to bind the server to.")
