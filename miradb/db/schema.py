@@ -60,20 +60,41 @@ class TextRef(Base, EpiTable):
         }
     
 
+class ExtractionMethod(Base, EpiTable):
+    __tablename__ = 'extraction_method'
+
+    id = Column(Integer, primary_key=True) 
+    extraction_method = Column(String, nullable=False) # {"mineru_image", "mineru_text", "marker"}
+    extraction_method_desc = Column(String, nullable=True)
+
+    text_ref = relationship("TextContent", back_populates="extraction_method_obj", cascade="all, delete-orphan")
+    ode_ref = relationship("ODEs", back_populates="extraction_method_obj", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<ExtractionMethod(id='{self.id}', extraction_method='{self.extraction_method}')>"
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'extraction_method': self.extraction_method,
+            'extraction_method_desc': self.extraction_method_desc,
+        }
+
+
 class TextContent(Base, EpiTable):
     __tablename__ = 'text_contents'
 
     id = Column(Integer, primary_key=True) 
     text_ref = Column(Integer, ForeignKey('text_references.id', ondelete="CASCADE"), nullable=False)
     folder_path = Column(String, nullable=False)
-    extraction_method = Column(Integer, nullable=False) # { extraction_method: 0 = MinerU, 1 = UniMERNet, 2 = marker}
+    extraction_method_id = Column(Integer, ForeignKey('extraction_method.id'), nullable=False)
     extracted_info_path = Column(String, nullable=False)
-    # consider adding another table for the extraction_method dict and metadata (gpu/cpu, etc)
 
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     text_ref_obj = relationship("TextRef", back_populates="text_contents")
+    extraction_method_obj = relationship("ExtractionMethod", back_populates="text_ref")
 
     odes = relationship("ODEs", back_populates="text_con_obj", cascade="all, delete-orphan")
 
@@ -85,7 +106,7 @@ class TextContent(Base, EpiTable):
             'id': self.id,
             'text_ref': self.text_ref,
             'folder_path': self.folder_path,
-            'extraction_method': self.extraction_method,
+            'extraction_method_id': self.extraction_method_id,
             'extracted_info_path': self.extracted_info_path,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
@@ -99,21 +120,18 @@ class ODEs(Base, EpiTable):
     txt_content_ref = Column(Integer, ForeignKey('text_contents.id', ondelete="CASCADE") ,nullable=False)
     ode = Column(String, nullable=False)
     corrected_ode = Column(String, nullable=True)
-    extraction_method = Column(Integer, nullable=False) # { extraction_method: 0 = MinerU, 1 = UniMERNet, 2 = marker}
+    extraction_method_id = Column(Integer, ForeignKey('extraction_method.id'), nullable=False)
 
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     mira_model = relationship("MiraModel", back_populates="ode_obj", cascade="all, delete-orphan")
+    extraction_method_obj = relationship("ExtractionMethod", back_populates="ode_ref")
 
     __table_args__ = (
         CheckConstraint(
             "ode IS NOT NULL OR corrected_ode IS NOT NULL",
             name="ck_at_least_one_not_null_ode"
-        ),
-        CheckConstraint(
-            "extraction_method>=0 and extraction_method<=2",
-            name="ck_extraction_method_range"
         ),
     )
 
@@ -128,7 +146,7 @@ class ODEs(Base, EpiTable):
             'txt_content_ref': self.txt_content_ref,
             'ode': self.ode,
             'corrected_ode': self.corrected_ode,
-            'extraction_method': self.extraction_method,
+            'extraction_method_id': self.extraction_method_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

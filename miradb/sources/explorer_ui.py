@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import text as sa_text
 from sympy import latex, Derivative
 import json 
-from db.manager import get_db
+from miradb.db.manager import get_db
 from mira.modeling import Model
 from mira.modeling.ode import OdeModel
 from mira.metamodel import TemplateModel
@@ -32,10 +32,11 @@ mira_template_models = Table("mira_template_models", metadata, autoload_with=eng
 Session = sessionmaker(bind=engine)
 
 
-EXTRACTION_METHOD_LABELS = {
-    0: "Multi-Agent Image Pipeline",
-    1: "MinerU CPU Text Extraction",
-    2: "Misccc Extraction",
+extraction_method_LABELS = {
+    1: "Marker Extraction",
+    2: "Multi-Agent Image Pipeline",
+    3: "MinerU CPU Text Extraction",
+    4: "XML Extraction",
 }
 
 def _pick_ode(row) -> str:
@@ -227,7 +228,7 @@ def search_pmids():
                     text_references.c.pmid.in_(gc_pmid_sq),
                 )
             )
-            .order_by(text_references.c.year.desc()),
+            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
             {"pattern": pattern}
         ).mappings().all() 
 
@@ -281,7 +282,7 @@ def get_all_pmids():
                 func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
             )
             .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == text_references.c.id)
-            .order_by(text_references.c.year.desc())
+            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
         ).mappings().all()
 
     return jsonify([
@@ -305,7 +306,7 @@ def get_models_for_pmid(pmid: str):
     [
       {
         "id":                1,
-        "extraction_method": 0,
+        "extraction_method_id": 0,
         "method_label":      "Multi-Agent Pipeline",
         "latex":             ["\\frac{dS}{dt} = …", …]
         "grounded_concepts": {}
@@ -341,17 +342,16 @@ def get_models_for_pmid(pmid: str):
                 latex_lines, grounded_concepts = _ode_str_to_latex_lines(ode)
                 if latex_lines is None:
                     latex_lines = [ode.corrected_ode or ode.ode]
-                method    = ode["extraction_method"]
+                method    = ode["extraction_method_id"]
 
                 results.append({
                     "id":                 ode["id"],
-                    "extraction_method":  method,
-                    "method_label":       EXTRACTION_METHOD_LABELS.get(method, f"Method {method}"),
+                    "extraction_method":  method - 1,  # convert to 0-based for frontend
+                    "method_label":       extraction_method_LABELS.get(method, f"Method {method}"),
                     "latex":              latex_lines,
                     "grounded_concepts":  grounded_concepts or {},
                 })
-
-        # Sort by extraction_method so cards appear in a consistent order
+        # Sort by extraction_method_id so cards appear in a consistent order
         results.sort(key=lambda r: r["extraction_method"])
 
     return jsonify(results)
