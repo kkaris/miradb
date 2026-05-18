@@ -26,7 +26,7 @@ def health():
 @app.route("/")
 def index():
     # Redirect to /explorer
-    redirect("/explorer", code=302)
+    redirect("/explorer", code=301)
 
 
 @click.command()
