@@ -24,7 +24,7 @@ explorer_blueprint.template_folder = "templates"
 # ── DB setup ──────────────
 
 db = get_db('primary')
-engine = db.engine 
+engine = db.engine
 
 metadata = MetaData()
 text_references      = Table("text_references",      metadata, autoload_with=engine)
@@ -78,7 +78,7 @@ def _ode_str_to_latex_lines(ode) -> list[str]:
                 initialized=False,
             )
 
-            # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix 
+            # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix
             kinetics = om.get_interpretable_kinetics()
 
             latex_lines = []
@@ -233,7 +233,7 @@ def search_pmids():
             )
             .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
             {"pattern": pattern}
-        ).mappings().all() 
+        ).mappings().all()
 
     return jsonify([
         {
@@ -525,3 +525,4 @@ def download_sympy(ode_id: int):
         as_attachment=True,
         download_name=f"model_{ode_id}.py",
     )
+
