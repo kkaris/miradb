@@ -54,71 +54,62 @@ def _derivative_to_latex(expr) -> str:
     return latex(expr)
 
 
-def _ode_str_to_latex_lines(ode) -> list[str]:
-    with Session() as session:
-        tm = session.execute(
-            select(mira_template_models).where(
-                mira_template_models.c.ode_ref == ode["id"]
-            )
-        ).mappings().first()
+def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
+    if not tm or not tm.get("mira_template_model"):
+        return [], []
 
-        if not tm or not tm.get("mira_template_model"):
-            return [], []
+    try:
+        raw = tm["mira_template_model"]
+        if isinstance(raw, str):
+            raw = json.loads(raw)
 
-        try:
-            raw = tm["mira_template_model"]
-            if isinstance(raw, str):
-                raw = json.loads(raw)
+        loaded_model = TemplateModel.from_json(raw)
+        loaded_model.time = Time(name='t', units=None)
 
-            loaded_model = TemplateModel.from_json(raw)
-            loaded_model.time = Time(name='t', units=None)
+        om = OdeModel(
+            model=Model(template_model=loaded_model),
+            initialized=False,
+        )
 
-            om = OdeModel(
-                model=Model(template_model=loaded_model),
-                initialized=False,
-            )
+        # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix
+        kinetics = om.get_interpretable_kinetics()
 
-            # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix
-            kinetics = om.get_interpretable_kinetics()
+        latex_lines = []
 
-            latex_lines = []
+        if hasattr(kinetics, 'tolist'):
+            rows = kinetics.tolist()
+            for row in rows:
+                if len(row) == 3:
+                    # Handle case where get_interpretable_kinetics returns (lhs, '=', rhs)
+                    lhs, _, rhs = row
+                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
+                elif len(row) == 2:
+                    # Handle case where get_interpretable_kinetics returns (lhs, rhs) without the '='
+                    lhs, rhs = row
+                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
+                else:
+                    for expr in row:
+                        latex_lines.append(latex(expr))
 
-            if hasattr(kinetics, 'tolist'):
-                rows = kinetics.tolist()
-                for row in rows:
-                    if len(row) == 3:
-                        # Handle case where get_interpretable_kinetics returns (lhs, '=', rhs)
-                        lhs, _, rhs = row
-                        latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                    elif len(row) == 2:
-                        # Handle case where get_interpretable_kinetics returns (lhs, rhs) without the '='
-                        lhs, rhs = row
-                        latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                    else:
-                        for expr in row:
-                            latex_lines.append(latex(expr))
+        elif isinstance(kinetics, (list, tuple)):
+            for expr in kinetics:
+                latex_lines.append(latex(expr))
 
-            elif isinstance(kinetics, (list, tuple)):
-                for expr in kinetics:
-                    latex_lines.append(latex(expr))
+        else:
+            latex_lines.append(latex(kinetics))
 
-            else:
-                latex_lines.append(latex(kinetics))
+        raw_gc = tm.get("grounded_concepts")
+        if isinstance(raw_gc, str):
+            try:
+                raw_gc = json.loads(raw_gc)
+            except Exception:
+                raw_gc = None
 
-            raw_gc = None
-            if tm:
-                raw_gc = tm.get("grounded_concepts")
-                if isinstance(raw_gc, str):
-                    try:
-                        raw_gc = json.loads(raw_gc)
-                    except Exception:
-                        raw_gc = None
+        return latex_lines, raw_gc
 
-            return latex_lines, raw_gc
-
-        except Exception:
-            logger.exception("Failed to render LaTeX for ode id=%s", ode["id"])
-            return [], []
+    except Exception:
+        logger.exception("Failed to render LaTeX for ode id=%s", ode_id)
+        return [], []
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -332,7 +323,7 @@ def get_models_for_pmid(pmid: str):
             )
         ).mappings().all()
 
-        results = []
+        pending = []
         for content in contents:
             odes = session.execute(
                 select(ode_expressions).where(
@@ -341,21 +332,37 @@ def get_models_for_pmid(pmid: str):
             ).mappings().all()
 
             for ode in odes:
-                ode_str   = _pick_ode(ode)
-                latex_lines, grounded_concepts = _ode_str_to_latex_lines(ode)
-                if latex_lines is None:
-                    latex_lines = [ode.corrected_ode or ode.ode]
-                method    = ode["extraction_method_id"]
+                pending.append(dict(ode))
 
-                results.append({
-                    "id":                 ode["id"],
-                    "extraction_method":  method - 1,  # convert to 0-based for frontend
-                    "method_label":       extraction_method_LABELS.get(method, f"Method {method}"),
-                    "latex":              latex_lines,
-                    "grounded_concepts":  grounded_concepts or {},
-                })
-        # Sort by extraction_method_id so cards appear in a consistent order
-        results.sort(key=lambda r: r["extraction_method"])
+        tm_by_ode_id = {}
+        ode_ids = [ode["id"] for ode in pending]
+        if ode_ids:
+            tm_rows = session.execute(
+                select(mira_template_models).where(
+                    mira_template_models.c.ode_ref.in_(ode_ids)
+                )
+            ).mappings().all()
+            tm_by_ode_id = {row["ode_ref"]: dict(row) for row in tm_rows}
+
+        pending = [(ode, tm_by_ode_id.get(ode["id"])) for ode in pending]
+
+    results = []
+    for ode, tm in pending:
+        latex_lines, grounded_concepts = _template_to_latex_lines(tm, ode["id"])
+        if not latex_lines:
+            latex_lines = [ode.get("corrected_ode") or ode.get("ode")]
+        method = ode["extraction_method_id"]
+
+        results.append({
+            "id":                 ode["id"],
+            "extraction_method":  method - 1,  # convert to 0-based for frontend
+            "method_label":       extraction_method_LABELS.get(method, f"Method {method}"),
+            "latex":              latex_lines,
+            "grounded_concepts":  grounded_concepts or {},
+        })
+
+    # Sort by extraction_method so cards appear in a consistent order
+    results.sort(key=lambda r: r["extraction_method"])
 
     return jsonify(results)
 
