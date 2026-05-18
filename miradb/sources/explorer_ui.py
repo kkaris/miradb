@@ -42,9 +42,6 @@ extraction_method_LABELS = {
     4: "XML Extraction",
 }
 
-def _pick_ode(row) -> str:
-    """Return corrected_ode if present, else ode."""
-    return row["corrected_ode"] or ""
 
 def _derivative_to_latex(expr) -> str:
     """Render Derivative(X, t) as \\frac{dX}{dt} instead of \\frac{d}{dt} X."""
