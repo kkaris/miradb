@@ -1,5 +1,5 @@
 import click
-from flask import Flask
+from flask import Flask, redirect
 from .explorer_ui import explorer_blueprint
 
 app = Flask(__name__)
@@ -16,6 +16,17 @@ def add_no_cache(response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+
+@app.route("/health")
+def health():
+    return "OK", 200
+
+
+@app.route("/")
+def index():
+    # Redirect to /explorer
+    redirect("/explorer", code=302)
 
 
 @click.command()
