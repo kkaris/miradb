@@ -7,6 +7,7 @@ from sqlalchemy.sql.expression import text as sa_text
 from sympy import latex, Derivative
 import json 
 import io
+import math
 from miradb.db.manager import get_db
 from mira.modeling import Model
 from mira.modeling.ode import OdeModel
