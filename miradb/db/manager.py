@@ -25,7 +25,7 @@ def get_db(name):
 
 
 class MiraDatabaseManager(object):
-    """A parent class used to manage sessions with in MIRA's databases."""
+    """A parent class used to manage sessions within the MIRA-DB database."""
 
     table_order = [ 'text_references', 'extraction_method', 'text_contents', 'ode_expressions', 'mira_template_models']
     table_parent_class = EpiTable
@@ -44,7 +44,7 @@ class MiraDatabaseManager(object):
         return MiraDatabaseSessionManager(self.host, self.engine)
     
     def create_tables(self, tables=None):
-        """Create the tables from the MIRA database
+        """Create the tables from the MIRA-DB database
 
         Optionally specify `tables` to be created. List may contain either
         table objects or the string names of the tables.
@@ -73,7 +73,7 @@ class MiraDatabaseManager(object):
         return
     
     def drop_tables(self, tables=None, force=False):
-        """Drop the tables from the MIRA database given in `tables`.
+        """Drop the tables from the MIRA-DB database given in `tables`.
 
         If `tables` is None, all tables will be dropped. Note that if `force`
         is False, a warning prompt will be raised to asking for confirmation,
@@ -215,7 +215,7 @@ class MiraModelManager(MiraDatabaseManager):
     
     def get_text_ref(self, pmid: str):
         """
-        Retrieve a paper's text identifiers from the MIRA database by its PubMed ID.
+        Retrieve a paper's text identifiers from the MIRA-DB database by its PubMed ID.
         Parameters
         ----------  
         pmid : str
@@ -232,7 +232,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     def get_all_text_refs(self):
         """
-        Retrieve all papers' text identifiers from the MIRA database.
+        Retrieve all papers' text identifiers from the MIRA-DB database.
         Returns
         -------
         list of dict
@@ -333,7 +333,7 @@ class MiraModelManager(MiraDatabaseManager):
     
     def get_text_content(self, text_ref: int):
         """
-        Retrieve a paper's source information from the MIRA database by the paper's ID.
+        Retrieve a paper's source information from the MIRA-DB database by the paper's ID.
 
         Parameters
         ----------  
@@ -351,7 +351,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     def get_all_text_contents(self):
         """
-        Retrieve all papers' source information from the MIRA database.
+        Retrieve all papers' source information from the MIRA-DB database.
 
         Returns
         -------
@@ -460,7 +460,7 @@ class MiraModelManager(MiraDatabaseManager):
     
     def get_odes(self, txt_content_ref: int):
         """
-        Retrieve a paper's ODE equations from the MIRA database by the txt_content_ref.
+        Retrieve a paper's ODE equations from the MIRA-DB database by the txt_content_ref.
 
         Parameters
         ----------  
@@ -478,7 +478,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     def get_all_odes(self):
         """
-        Retrieve all papers' ODE equations from the MIRA database.
+        Retrieve all papers' ODE equations from the MIRA-DB database.
 
         Returns
         -------
@@ -578,7 +578,7 @@ class MiraModelManager(MiraDatabaseManager):
     
     def get_tm(self, ode_ref: int):
         """
-        Retrieve an ODE's MIRA template model information from the MIRA database by the ODE's ID.
+        Retrieve an ODE's MIRA template model information from the MIRA-DB database by the ODE's ID.
 
         Parameters
         ----------
@@ -597,7 +597,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     def get_all_tms(self):
         """
-        Retrieve all papers' MIRA template model information from the MIRA database.
+        Retrieve all papers' MIRA template model information from the MIRA-DB database.
 
         Returns
         -------
