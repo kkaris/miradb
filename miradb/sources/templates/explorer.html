@@ -93,6 +93,9 @@
         }
         .ep-summary-card:hover        { box-shadow: 0 4px 12px rgba(0,0,0,.08); border-color: #93c5fd; }
         .ep-summary-card.highlighted  { border-color: #3b82f6; box-shadow: 0 0 0 3px #bfdbfe; }
+        a.pmid-link { color: inherit; text-decoration: none; }
+        a.pmid-link:hover { text-decoration: underline; color: #2563eb; }
+        .text-muted a.pmid-link { color: #2563eb; }
 
         /* ── Detail / ODE cards ── */
         .ode-card {
@@ -368,10 +371,10 @@ function renderSidebar(list) {
         <button class="sidebar-item ${selectedPmid === ep.pmid ? 'active' : ''}"
                 data-pmid="${ep.pmid}">
             <div class="fw-medium text-dark" style="font-size:.78rem;line-height:1.3">
-                ${escHtml(ep.title || ep.pmid)}
+                ${titleOrPmidHtml(ep, true)}
             </div>
             <div class="text-muted" style="font-size:.7rem;margin-top:2px">
-                PMID ${ep.pmid}
+                ${pmidLabelHtml(ep.pmid, true)}
                 ${ep.model_count ? `&middot; ${ep.model_count} extraction${ep.model_count !== 1 ? 's' : ''}` : ''}
             </div>
             <div class="text-muted" style="font-size:.7rem">
@@ -513,7 +516,7 @@ function buildSummaryCard(ep) {
                 ${escHtml(ep.title || ep.pmid)}
             </div>
             <div class="text-muted" style="font-size:.72rem;margin-top:2px">
-                ${escHtml(ep.author_list || '')}${ep.pub_year ? ' &middot; ' + ep.pub_year : ''} &middot; PMID ${ep.pmid}
+                ${escHtml(ep.author_list || '')}${ep.pub_year ? ' &middot; ' + ep.pub_year : ''} &middot; ${pmidLabelHtml(ep.pmid, true)}
 
             </div>
         </div>
@@ -574,8 +577,12 @@ async function openDetail(pmid) {
     document.getElementById('detail-view').style.display = 'block';
 
     document.getElementById('detail-title').textContent = ep?.title || pmid;
-    document.getElementById('detail-meta').textContent  =
-        [ep?.author_list, ep?.pub_year, `PMID ${pmid}`].filter(Boolean).join(' · ');
+    document.getElementById('detail-meta').innerHTML =
+        [
+            ep?.author_list ? escHtml(ep.author_list) : '',
+            ep?.pub_year ? escHtml(String(ep.pub_year)) : '',
+            pmidLabelHtml(pmid),
+        ].filter(Boolean).join(' · ');
 
     const cardsEl = document.getElementById('detail-cards');
     cardsEl.innerHTML = `
@@ -591,7 +598,7 @@ async function openDetail(pmid) {
             `${models.length} extraction result${models.length !== 1 ? 's' : ''}`;
 
         if (!models.length) {
-            cardsEl.innerHTML = '<p class="text-muted">No models stored for this PMID.</p>';
+            cardsEl.innerHTML = `<p class="text-muted">No models stored for this ${pmidLabelHtml(pmid)}.</p>`;
             return;
         }
 
@@ -756,6 +763,23 @@ function escHtml(str) {
     return String(str)
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
         .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function pubmedUrl(pmid) {
+    return `https://bioregistry.io/pubmed:${encodeURIComponent(pmid)}`;
+}
+
+function pmidLinkHtml(pmid, stopClick) {
+    const stop = stopClick ? ' onclick="event.stopPropagation()"' : '';
+    return `<a class="pmid-link" href="${pubmedUrl(pmid)}" target="_blank" rel="noopener noreferrer"${stop}>${escHtml(pmid)}</a>`;
+}
+
+function pmidLabelHtml(pmid, stopClick) {
+    return `PMID ${pmidLinkHtml(pmid, stopClick)}`;
+}
+
+function titleOrPmidHtml(ep, stopClick) {
+    return ep.title ? escHtml(ep.title) : pmidLinkHtml(ep.pmid, stopClick);
 }
 
 init();
