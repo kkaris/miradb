@@ -1,6 +1,6 @@
-# MiraDB
+# MIRA-DB
 
-MiraDB is a database pipeline for extracting, storing, and comparing
+MIRA-DB is a database pipeline for extracting, storing, and comparing
 epidemiological ODE models from scientific literature. It is built as a
 companion to the [MIRA](https://github.com/gyorilab/mira) framework,
 extending it with a structured PostgreSQL backend.
@@ -8,13 +8,13 @@ extending it with a structured PostgreSQL backend.
 
 ## Overview
 
-MiraDB is a structured database and web explorer for epidemiological ODE
+MIRA-DB is a structured database and web explorer for epidemiological ODE
 models extracted from scientific literature. It provides a PostgreSQL backend
 for storing MIRA `TemplateModel` representations along with their source
 metadata, and a web application for browsing, searching, and inspecting
 models and their grounded components.
  
-MiraDB serves as the storage and retrieval layer in a broader modeling
+MIRA-DB serves as the storage and retrieval layer in a broader modeling
 ecosystem as it is designed to work alongside tools like MIRA's agentic
 extraction pipeline, which populates the database with models derived from
 epidemiology publications.
@@ -29,7 +29,7 @@ epidemiology publications.
 
 ## Architecture
 
-MiraDB is organized around a PostgreSQL backend with four core tables that
+MIRA-DB is organized around a PostgreSQL backend with four core tables that
 track the provenance chain from source publication through to grounded MIRA
 model. The schema draws on and adapts patterns from
 [EMMAA](https://github.com/gyorilab/emmaa).
@@ -80,6 +80,6 @@ python -m pip install git+https://github.com/gyorilab/miradb.git
 Core dependencies (`flask`, `sqlalchemy>=2`, and `mira`) are installed
 automatically.
 
-MiraDB requires a running PostgreSQL instance. The database connection can 
+MIRA-DB requires a running PostgreSQL instance. The database connection can 
 be configured by editing [config](db/default_db_config.ini) with your PostgreSQL
 server details.
