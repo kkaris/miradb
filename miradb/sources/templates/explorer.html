@@ -175,6 +175,7 @@
         .pill-0 { background:#dbeafe; color:#1d4ed8; }
         .pill-1 { background:#ede9fe; color:#6d28d9; }
         .pill-2 { background:#d1fae5; color:#065f46; }
+        .pill-3 { background:#fef3c7; color:#92400e; }
 
         /* ── Grid ── */
         #ep-grid {
@@ -305,14 +306,14 @@ let selectedPmid = null;
 let searchDebounceTimer = null;
 let currentSearchController = null;
 
-const CAROUSEL_MAX_CONCURRENT = 8;
-const CAROUSEL_ROOT_MARGIN = '200px';
+const SUMMARY_MAX_CONCURRENT = 8;
+const SUMMARY_ROOT_MARGIN = '200px';
 
-let carouselObserver = null;
-const carouselScheduled = new Set();
-const carouselQueue = [];
-const carouselPendingCards = new Map();
-let carouselInFlight = 0;
+let summaryObserver = null;
+const summaryScheduled = new Set();
+const summaryQueue = [];
+const summaryPendingCards = new Map();
+let summaryInFlight = 0;
 
 /* ════════════════════════════════════════════════════════════
    Extraction method priority for summary cards
@@ -424,68 +425,68 @@ document.getElementById('sidebar-search').addEventListener('input', function () 
 });
 
 /* ════════════════════════════════════════════════════════════
-   Grid carousel load (lazy + concurrency cap)
+   Grid summary load (lazy + concurrency cap)
 ════════════════════════════════════════════════════════════ */
-function scheduleCarouselLoad(pmid, card) {
-    if (carouselScheduled.has(pmid)) return;
-    carouselScheduled.add(pmid);
-    if (card) carouselPendingCards.set(pmid, card);
-    carouselQueue.push(pmid);
-    drainCarouselQueue();
+function scheduleSummaryLoad(pmid, card) {
+    if (summaryScheduled.has(pmid)) return;
+    summaryScheduled.add(pmid);
+    if (card) summaryPendingCards.set(pmid, card);
+    summaryQueue.push(pmid);
+    drainSummaryQueue();
 }
 
-async function drainCarouselQueue() {
-    while (carouselInFlight < CAROUSEL_MAX_CONCURRENT && carouselQueue.length) {
-        const pmid = carouselQueue.shift();
-        carouselInFlight++;
+async function drainSummaryQueue() {
+    while (summaryInFlight < SUMMARY_MAX_CONCURRENT && summaryQueue.length) {
+        const pmid = summaryQueue.shift();
+        summaryInFlight++;
         let ok = false;
         try {
-            ok = await initSummaryCarousel(pmid);
+            ok = await loadSummaryCard(pmid);
         } finally {
-            carouselInFlight--;
+            summaryInFlight--;
             if (ok) {
-                const card = carouselPendingCards.get(pmid);
-                if (card && carouselObserver) carouselObserver.unobserve(card);
-                carouselPendingCards.delete(pmid);
+                const card = summaryPendingCards.get(pmid);
+                if (card && summaryObserver) summaryObserver.unobserve(card);
+                summaryPendingCards.delete(pmid);
             } else {
-                carouselScheduled.delete(pmid);
-                carouselPendingCards.delete(pmid);
+                summaryScheduled.delete(pmid);
+                summaryPendingCards.delete(pmid);
             }
-            drainCarouselQueue();
+            drainSummaryQueue();
         }
     }
 }
 
-function teardownLazyCarousels() {
-    if (carouselObserver) {
-        carouselObserver.disconnect();
-        carouselObserver = null;
+function teardownLazySummaryCards() {
+    if (summaryObserver) {
+        summaryObserver.disconnect();
+        summaryObserver = null;
     }
-    carouselQueue.length = 0;
-    carouselScheduled.clear();
-    carouselPendingCards.clear();
+    summaryQueue.length = 0;
+    summaryScheduled.clear();
+    summaryPendingCards.clear();
 }
 
-function setupLazyCarousels(grid) {
-    teardownLazyCarousels();
+function setupLazySummaryCards(grid) {
+    teardownLazySummaryCards();
 
     const scrollRoot = document.getElementById('main-area');
     if (!scrollRoot) return;
 
-    carouselObserver = new IntersectionObserver((entries) => {
+    summaryObserver = new IntersectionObserver((entries) => {
         for (const entry of entries) {
             if (!entry.isIntersecting) continue;
             const pmid = entry.target.dataset.pmid;
-            if (pmid) scheduleCarouselLoad(pmid, entry.target);
+            if (pmid) scheduleSummaryLoad(pmid, entry.target);
         }
     }, {
         root: scrollRoot,
-        rootMargin: CAROUSEL_ROOT_MARGIN,
+        rootMargin: SUMMARY_ROOT_MARGIN,
         threshold: 0,
     });
 
     grid.querySelectorAll('.ep-summary-card').forEach(card => {
-        carouselObserver.observe(card);
+        summaryObserver.observe(card);
     });
 }
 
@@ -496,7 +497,7 @@ function renderGrid() {
     const grid = document.getElementById('ep-grid');
     grid.innerHTML = allEpidemics.map(ep => buildSummaryCard(ep)).join('');
 
-    setupLazyCarousels(grid);
+    setupLazySummaryCards(grid);
 
     grid.querySelectorAll('.ep-summary-card').forEach(card => {
         card.addEventListener('click', () => openDetail(card.dataset.pmid));
@@ -516,8 +517,7 @@ function buildSummaryCard(ep) {
 
             </div>
         </div>
-        <!-- Carousel -->
-        <div class="px-3 py-2" id="carousel-${ep.pmid}">
+        <div class="px-3 py-2" id="card-body-${ep.pmid}">
             <div class="text-center text-muted small py-3">
                 <span class="spinner-border spinner-border-sm"></span>
             </div>
@@ -525,9 +525,9 @@ function buildSummaryCard(ep) {
     </div>`;
 }
 
-/* Fetch models for one card and initialise its carousel */
-async function initSummaryCarousel(pmid) {
-    const container = document.getElementById(`carousel-${pmid}`);
+/* Fetch models, pick the best one by priority, render a single static card */
+async function loadSummaryCard(pmid) {
+    const container = document.getElementById(`card-body-${pmid}`);
     if (!container) return false;
 
     try {
@@ -540,61 +540,16 @@ async function initSummaryCarousel(pmid) {
             return true;
         }
 
-        let idx = 0;
+        const m = pickBestModel(models);
 
-        function renderCarousel() {
-            const m     = models[idx];
-            const total = models.length;
+        container.innerHTML = `
+            <div class="summary-eq-box" id="eqbox-${pmid}"
+                 onclick="event.stopPropagation()">
+                ${wrapLatex(m.latex)}
+            </div>
+        `;
 
-            container.innerHTML = `
-                <!-- Model nav row -->
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <button class="carousel-arrow" id="prev-${pmid}" ${idx === 0 ? 'disabled' : ''}>‹</button>
-
-                    <div class="d-flex flex-column align-items-center gap-1 flex-grow-1 mx-2">
-                        <span class="badge rounded-pill pill-${m.extraction_method}"
-                              style="font-size:.7rem;font-weight:600">
-                            ${escHtml(m.method_label)}
-                        </span>
-                        <div class="d-flex gap-1 align-items-center">
-                            ${models.map((mm, i) => `
-                                <button class="dot-btn ${i === idx ? 'active-' + mm.extraction_method : ''}"
-                                        data-dot-idx="${i}"></button>
-                            `).join('')}
-                        </div>
-                        <span class="text-muted" style="font-size:.7rem">
-                            Model ${idx + 1} of ${total}
-                        </span>
-                    </div>
-
-                    <button class="carousel-arrow" id="next-${pmid}" ${idx === total - 1 ? 'disabled' : ''}>›</button>
-                </div>
-
-                <!-- Equation box -->
-                <div class="eq-box" id="eqbox-${pmid}">
-                    ${wrapLatex(m.latex)}
-                </div>
-            `;
-
-            renderKatex(document.getElementById(`eqbox-${pmid}`));
-
-            container.querySelector(`#prev-${pmid}`).addEventListener('click', e => {
-                e.stopPropagation(); idx = Math.max(idx - 1, 0); renderCarousel();
-            });
-            container.querySelector(`#next-${pmid}`).addEventListener('click', e => {
-                e.stopPropagation(); idx = Math.min(idx + 1, total - 1); renderCarousel();
-            });
-
-            container.querySelectorAll('.dot-btn').forEach(btn => {
-                btn.addEventListener('click', e => {
-                    e.stopPropagation();
-                    idx = parseInt(btn.dataset.dotIdx);
-                    renderCarousel();
-                });
-            });
-        }
-
-        renderCarousel();
+        renderKatex(document.getElementById(`eqbox-${pmid}`));
         return true;
 
     } catch (err) {
