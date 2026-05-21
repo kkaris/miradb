@@ -43,6 +43,33 @@
         #top-banner .github-link:hover { color: #fff; }
         #top-banner .github-link i { font-size: 1.1rem; }
 
+        /* ── Bottom footer ── */
+        #bottom-footer {
+            height: 36px;
+            background: #1e3a5f;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.25rem;
+            flex-shrink: 0;
+        }
+        #bottom-footer .footer-text {
+            font-size: .72rem;
+            color: #93c5fd;
+        }
+        #bottom-footer .footer-links {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        #bottom-footer .footer-link {
+            color: #93c5fd;
+            font-size: .72rem;
+            text-decoration: none;
+            transition: color 0.12s;
+        }
+        #bottom-footer .footer-link:hover { color: #fff; }
+
         /* ── Layout ── */
         html, body { height: 100%; overflow: hidden; margin: 0; }
         #app-shell { display: flex; flex-direction: column; height: 100vh; }
@@ -307,6 +334,17 @@
 
         </div>
     </div><!-- /#content-row -->
+
+    <!-- ══════════════ FOOTER ══════════════ -->
+    <footer id="bottom-footer">
+        <span class="footer-text">MiraDB &middot; <a class="footer-link" href="https://gyorilab.github.io/" target="_blank" rel="noopener">Gyori Lab</a> &middot; Supported by grant XYZ.</span>
+        <div class="footer-links">
+            <a class="footer-link" href="https://github.com/gyorilab/mira" target="_blank" rel="noopener">MIRA on GitHub</a>
+            <a class="footer-link" href="https://miramodel.readthedocs.io" target="_blank" rel="noopener">MIRA Documentation</a>
+            <a class="footer-link" href="https://github.com/gyorilab/miradb" target="_blank" rel="noopener">MiraDB on GitHub</a>
+        </div>
+    </footer>
+
 </div><!-- /#app-shell -->
 
 
