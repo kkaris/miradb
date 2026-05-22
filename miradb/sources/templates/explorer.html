@@ -25,11 +25,16 @@
             padding: 0 1.25rem;
             flex-shrink: 0;
         }
-        #top-banner .lab-name {
-            font-size: .9rem;
-            font-weight: 700;
-            color: #fff;
-            letter-spacing: .02em;
+        #top-banner .banner-left,
+        #top-banner .banner-right {
+            display: flex;
+            align-items: center;
+        }
+        #top-banner .banner-right { gap: 1rem; }
+        #top-banner .banner-logo {
+            height: 28px;
+            width: auto;
+            vertical-align: middle;
         }
         #top-banner .github-link {
             display: flex;
@@ -273,13 +278,16 @@
 
     <!-- ══════════════ TOP BANNER ══════════════ -->
     <div id="top-banner">
-        <span class="lab-name">
-            <img src="/static/gyorilab_logo.png" style="height:28px; width:auto; margin-right:0.5rem; vertical-align:middle;">
-        </span>
-        <a class="github-link" href="https://github.com/gyorilab/miradb" target="_blank" rel="noopener">
-            <i class="bi bi-github"></i>
-            View on GitHub
-        </a>
+        <div class="banner-left">
+            <img src="/static/mira_logo_inverted.png" alt="MIRA" class="banner-logo mira-logo">
+        </div>
+        <div class="banner-right">
+            <a class="github-link" href="https://github.com/gyorilab/miradb" target="_blank" rel="noopener">
+                <i class="bi bi-github"></i>
+                View on GitHub
+            </a>
+            <img src="/static/gyorilab_logo.png" alt="Gyorilab" class="banner-logo lab-logo">
+        </div>
     </div>
 
     <div id="content-row">
@@ -288,7 +296,7 @@
         <div id="sidebar">
             <!-- Header -->
             <div class="px-3 pt-3 pb-2 border-bottom">
-                <h6 class="fw-bold text-dark mb-2">Epidemic Model Viewer</h6>
+                <h6 class="fw-bold text-dark mb-2">Model search</h6>
                 <div class="position-relative">
                     <input id="sidebar-search" type="text"
                            class="form-control form-control-sm"
