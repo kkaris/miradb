@@ -297,13 +297,13 @@ class MiraModelManager(MiraDatabaseManager):
             return
         return source_id
     
-    def update_text_content(self, text_ref: int, folder_path: str = None, extraction_method_id: int = None, extracted_info_path: str = None):
+    def update_text_content(self, id: int, folder_path: str = None, extraction_method_id: int = None, extracted_info_path: str = None):
         """
         Update a paper source's information in the database.
 
         Parameters
         ----------
-        text_ref : int
+        id : int
             The ID of the text context (from TextContent) that this source information is linked to.
         folder_path : str, optional
             The realtive file path to the folder containing the paper's source files (e.g., PDFs, images).
@@ -318,9 +318,9 @@ class MiraModelManager(MiraDatabaseManager):
             True if the paper source was found and updated, False if the paper source was not found.
         """
         with self.get_session() as sess:
-            p_source = sess.query(TextContent).filter_by(text_ref=text_ref).first()
+            p_source = sess.query(TextContent).filter_by(id=id).first()
             if not p_source:
-                logger.warning("Paper source '%s' not found.", text_ref)
+                logger.warning("Paper source '%s' not found.", id)
                 return False
             if folder_path is not None:
                 p_source.folder_path = folder_path
@@ -328,7 +328,7 @@ class MiraModelManager(MiraDatabaseManager):
                 p_source.extraction_method_id = extraction_method_id
             if extracted_info_path is not None:
                 p_source.extracted_info_path = extracted_info_path
-            logger.info("Updated paper source '%s'.", text_ref)
+            logger.info("Updated paper source '%s'.", id)
         return True
     
     def get_text_content(self, text_ref: int):
@@ -346,8 +346,8 @@ class MiraModelManager(MiraDatabaseManager):
             Dictionary keys: 'source_id', 'text_ref', 'folder_path', 'extraction_method_id', 'extracted_info_path', 'created_at', 'updated_at'
         """
         with self.get_session() as sess:
-            p_source = sess.query(TextContent).filter_by(text_ref=text_ref).first()
-            return p_source.to_dict() if p_source else None
+            p_source = sess.query(TextContent).filter_by(text_ref=text_ref).all()
+            return [p.to_dict() for p in p_source] if p_source else None
 
     def get_all_text_contents(self):
         """
@@ -378,11 +378,12 @@ class MiraModelManager(MiraDatabaseManager):
             True if the paper source was found and deleted, False if the paper source was not found.
         """
         with self.get_session() as sess:
-            p = sess.query(TextContent).filter_by(text_ref=text_ref).first()
+            p = sess.query(TextContent).filter_by(text_ref=text_ref).all()
             if not p:
                 logger.warning("Paper source '%s' not found.", text_ref)
                 return False
-            sess.delete(p)
+            for item in p:
+                sess.delete(item)
             logger.info("Deleted paper source '%s' and all linked rows.", text_ref)
         return True
     

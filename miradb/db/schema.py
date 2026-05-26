@@ -1,7 +1,7 @@
 import logging
 
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, CheckConstraint, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, CheckConstraint, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSON, ARRAY
 
@@ -98,6 +98,10 @@ class TextContent(Base, EpiTable):
 
     odes = relationship("ODEs", back_populates="text_con_obj", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        UniqueConstraint('text_ref', 'extraction_method_id', name='uq_text_ref_extraction_method'),
+    )
+
     def __repr__(self):
         return f"<TextContent(id='{self.id}', text_ref='{self.text_ref}')>"
     
@@ -133,6 +137,7 @@ class ODEs(Base, EpiTable):
             "ode IS NOT NULL OR corrected_ode IS NOT NULL",
             name="ck_at_least_one_not_null_ode"
         ),
+        UniqueConstraint('txt_content_ref', name='uq_txt_content_ref'),
     )
 
     text_con_obj = relationship("TextContent", back_populates="odes")
@@ -167,6 +172,10 @@ class MiraModel(Base, EpiTable):
 
     def __repr__(self):
         return f"<MiraModel(id='{self.id}', template_model='{self.mira_template_model}')>"
+    
+    __table_args__ = (
+    UniqueConstraint('ode_ref', name='uq_ode_ref'),
+)
     
     def to_dict(self):
         return {
