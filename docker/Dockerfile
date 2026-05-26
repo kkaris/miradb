@@ -12,13 +12,13 @@ ENV VENV_PATH=$DIRPATH/venv
 RUN python -m venv $VENV_PATH
 ENV PATH="$VENV_PATH/bin:$PATH"
 
+# Setup
 RUN mkdir -p /root/.config/indra && \
     echo "[indra]" > /root/.config/indra/config.ini && \
-    # Install Python dependencies
-    pip install --upgrade pip \
+    pip install --upgrade pip
 
-# Install midradb
-RUN pip install "midradb @ git+https://github.com/gyorilab/miradb.git@dockerize"
+# Install miradb
+RUN pip install "miradb @ git+https://github.com/gyorilab/miradb.git@dockerize"
 
 # Set entypoint
 ENTRYPOINT ["python", "-m", "miradb.sources.app", "--port", "8003"]
