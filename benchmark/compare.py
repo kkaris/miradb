@@ -613,16 +613,14 @@ def generate_score_only_report(report: dict, e1: int, pmid: str):
 # ----------------------------------
 
 
-progress_file = Path("report_score.csv")
+progress_file = Path("results/report_score.csv")
 print(f"Saving progress to {progress_file}")
 
 db = get_db('primary')
 mira_db = MiraModelManager(db.host)
 Session = sessionmaker(bind=mira_db.engine)
-
-# Replace with your TSV file containing gold standard ODEs and PMIDs for comparison.  
-gold_standard = pd.read_csv("eqs_list.tsv", sep="\t")     
-gold_standard['pmid'] = gold_standard['pmid'].astype(str).str.replace(r'\.0$', '', regex=True)
+ 
+gold_standard = pd.read_csv("resources/eqs_list.tsv", sep="\t")     
 
 for idx in range(len(gold_standard)):
     pmid = gold_standard.iloc[idx]["pmid"]

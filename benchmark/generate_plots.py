@@ -5,7 +5,7 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 
 # Load and preprocess data
-df = pd.read_csv('report_v9_score.csv', sep=';',
+df = pd.read_csv('results/report_score.csv', sep=';',
                  names=['pmid', 'method_id', 'comp_jaccard', 'term_jaccard', 'ted'])
 
 df = df.drop_duplicates(subset=['pmid', 'method_id'])
@@ -95,9 +95,9 @@ legend_handles = [
 #            frameon=False, fontsize=LEGEND_FS, bbox_to_anchor=(0.5, -0.05))
 # fig.suptitle('Score distributions by extraction method', fontsize=TITLE_FS + 1, y=1.02)
 plt.tight_layout(rect=[0, 0.08, 1, 1])
-plt.savefig('plot_1_boxplots.png', dpi=200, bbox_inches='tight')
+plt.savefig('results/plot_1_boxplots.png', dpi=200, bbox_inches='tight')
 plt.close()
-print("Saved plot_1_boxplots.png")
+print("Saved results/plot_1_boxplots.png")
 
 
 # ------- Plot 2: Scatter -------------------
@@ -125,9 +125,9 @@ ax.xaxis.grid(True, linewidth=0.5, alpha=0.5)
 ax.set_axisbelow(True)
 sns.despine(ax=ax)
 plt.tight_layout()
-plt.savefig('plot_2_scatter.png', dpi=200, bbox_inches='tight')
+plt.savefig('results/plot_2_scatter.png', dpi=200, bbox_inches='tight')
 plt.close()
-print("Saved plot_2_scatter.png")
+print("Saved results/plot_2_scatter.png")
 
 
 # ------- Plot 3: Combined score grouped bar -------------------
@@ -156,9 +156,9 @@ ax.yaxis.grid(True, linewidth=0.5, alpha=0.5)
 ax.set_axisbelow(True)
 sns.despine(ax=ax)
 plt.tight_layout()
-plt.savefig('plot_3_combined_bar.png', dpi=200, bbox_inches='tight')
+plt.savefig('results/plot_3_combined_bar.png', dpi=200, bbox_inches='tight')
 plt.close()
-print("Saved plot_3_combined_bar.png")
+print("Saved results/plot_3_combined_bar.png")
 
 
 # ------- Plots 4 & 5: Heatmaps -------------------
@@ -172,8 +172,8 @@ var_order  = pivot.var(axis=1).sort_values(ascending=False).index
 cmap = sns.color_palette("YlGn", as_cmap=True)
 
 for sort_order, label, fname in [
-    (mean_order, 'sorted by mean combined score',     'plot_4_heatmap_mean.png'),
-    (var_order,  'sorted by variance across methods', 'plot_5_heatmap_variance.png'),
+    (mean_order, 'sorted by mean combined score',     'results/plot_4_heatmap_mean.png'),
+    (var_order,  'sorted by variance across methods', 'results/plot_5_heatmap_variance.png'),
 ]:
     fig, ax = plt.subplots(figsize=(6, 7))
     sns.heatmap(
