@@ -5,7 +5,7 @@ from sqlalchemy import select, Table, MetaData, func, or_, cast, Text, literal
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import text as sa_text
 from sympy import latex, Derivative
-import json 
+import json
 import io
 import math
 from miradb.db.manager import get_db
@@ -374,38 +374,38 @@ def _get_template_model_for_ode(session, ode_id: int):
             mira_template_models.c.ode_ref == ode_id
         )
     ).mappings().first()
- 
+
     if not row or not row.get("mira_template_model"):
         return None
- 
+
     raw = row["mira_template_model"]
     if isinstance(raw, str):
         raw = json.loads(raw)
 
     loaded_model = TemplateModel.from_json(raw)
     loaded_model.time = Time(name='t', units=None)
- 
+
     return loaded_model
- 
+
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/json")
 def download_json(ode_id: int):
     """Export the MIRA TemplateModel as JSON."""
     with Session() as session:
         tm = _get_template_model_for_ode(session, ode_id)
- 
+
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
- 
+
     json_bytes = json.dumps(tm.model_dump(), indent=2).encode("utf-8")
- 
+
     return send_file(
         io.BytesIO(json_bytes),
         mimetype="application/json",
         as_attachment=True,
         download_name=f"model_{ode_id}.json",
     )
- 
- 
+
+
 def _sanitize_tm_for_sbml(tm):
     """Replace None/non-numeric parameter values with 0.0 for SBML export."""
     for param in tm.parameters.values():
@@ -422,13 +422,13 @@ def _sanitize_tm_for_sbml(tm):
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sbml")
 def download_sbml(ode_id: int):
     """Export the model as SBML via MIRA."""
- 
+
     with Session() as session:
         tm = _get_template_model_for_ode(session, ode_id)
- 
+
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
- 
+
     try:
         # for name, param in tm.parameters.items():
         #     if not isinstance(getattr(param, 'value', None), (int, float)):
@@ -438,15 +438,15 @@ def download_sbml(ode_id: int):
     except Exception:
         logger.exception("SBML export failed for ode_id=%s", ode_id)
         abort(500, description="SBML export failed — see server logs.")
- 
+
     return send_file(
         io.BytesIO(sbml_str.encode()),
         mimetype="application/xml",
         as_attachment=True,
         download_name=f"model_{ode_id}.xml",
     )
- 
- 
+
+
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sympy")
 def download_sympy(ode_id: int):
     """
@@ -456,15 +456,15 @@ def download_sympy(ode_id: int):
     """
     with Session() as session:
         tm = _get_template_model_for_ode(session, ode_id)
- 
+
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
- 
+
     try:
         tm.time = Time(name="t", units=None)
         om = OdeModel(model=Model(template_model=tm), initialized=False)
         kinetics = om.get_interpretable_kinetics()
- 
+
         # Collect (lhs_str, rhs_str) pairs
         ode_pairs = []
         if hasattr(kinetics, "tolist"):
@@ -480,17 +480,17 @@ def download_sympy(ode_id: int):
                 ode_pairs.append((str(expr), ""))
         else:
             ode_pairs.append((str(kinetics), ""))
- 
+
     except Exception:
         logger.exception("SymPy export failed for ode_id=%s", ode_id)
         abort(500, description="SymPy ODE export failed — see server logs.")
- 
+
     # ── Build the .py file ────────────────────────────────────────────────────
     lines = [
         "from sympy import *",
         "",
     ]
- 
+
     # Declare all symbols that appear across lhs + rhs
     all_symbols: set[str] = set()
     import re
@@ -500,18 +500,18 @@ def download_sympy(ode_id: int):
         for token in symbol_re.findall(lhs + " " + rhs):
             if token not in skip:
                 all_symbols.add(token)
- 
+
     if all_symbols:
         lines.append("# Declare symbols")
         lines.append(f"{', '.join(sorted(all_symbols))} = symbols('{' '.join(sorted(all_symbols))}')")
         lines.append("")
- 
+
     for lhs, rhs in ode_pairs:
         if rhs:
             lines.append(f"# {lhs} = {rhs}")
         else:
             lines.append(f"# {lhs}")
- 
+
     lines += [
         "",
         "odes = {",
@@ -520,9 +520,9 @@ def download_sympy(ode_id: int):
         if rhs:
             lines.append(f"    {lhs!r}: {rhs},")
     lines.append("}")
- 
+
     py_str = "\n".join(lines) + "\n"
- 
+
     return send_file(
         io.BytesIO(py_str.encode()),
         mimetype="text/plain",
