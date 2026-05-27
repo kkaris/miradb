@@ -15,15 +15,77 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.15/dist/contrib/auto-render.min.js"></script>
 
     <style>
+        /* ── Top banner ── */
+        #top-banner {
+            height: 48px;
+            background: #1e3a5f;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.25rem;
+            flex-shrink: 0;
+        }
+        #top-banner .banner-left,
+        #top-banner .banner-right {
+            display: flex;
+            align-items: center;
+        }
+        #top-banner .banner-right { gap: 1rem; }
+        #top-banner .banner-logo {
+            height: 28px;
+            width: auto;
+            vertical-align: middle;
+        }
+        #top-banner .github-link {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: #93c5fd;
+            font-size: .8rem;
+            text-decoration: none;
+            transition: color 0.12s;
+        }
+        #top-banner .github-link:hover { color: #fff; }
+        #top-banner .github-link i { font-size: 1.1rem; }
+
+        /* ── Bottom footer ── */
+        #bottom-footer {
+            height: 36px;
+            background: #1e3a5f;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.25rem;
+            flex-shrink: 0;
+        }
+        #bottom-footer .footer-text {
+            font-size: .72rem;
+            color: #93c5fd;
+        }
+        #bottom-footer .footer-links {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        #bottom-footer .footer-link {
+            color: #93c5fd;
+            font-size: .72rem;
+            text-decoration: none;
+            transition: color 0.12s;
+        }
+        #bottom-footer .footer-link:hover { color: #fff; }
+
         /* ── Layout ── */
-        html, body { height: 100%; overflow: hidden; }
+        html, body { height: 100%; overflow: hidden; margin: 0; }
+        #app-shell { display: flex; flex-direction: column; height: 100vh; }
+        #content-row { display: flex; flex: 1; min-height: 0; }
 
         #sidebar {
             width: 240px;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            height: 100%;
             background: #fff;
             border-right: 1px solid #e5e7eb;
         }
@@ -31,7 +93,7 @@
         #main-area {
             flex: 1;
             overflow-y: auto;
-            height: 100vh;
+            height: 100%;
             padding: 1.25rem;
             background: #f3f4f6;
         }
@@ -63,6 +125,19 @@
         }
         .ep-summary-card:hover        { box-shadow: 0 4px 12px rgba(0,0,0,.08); border-color: #93c5fd; }
         .ep-summary-card.highlighted  { border-color: #3b82f6; box-shadow: 0 0 0 3px #bfdbfe; }
+        a.pmid-link { color: inherit; text-decoration: none; }
+        a.pmid-link:hover { text-decoration: underline; color: #2563eb; }
+        .text-muted a.pmid-link { color: #2563eb; }
+        .gc-ontology a.curie-link,
+        .gc-context-value a.curie-link {
+            color: #6366f1;
+            text-decoration: none;
+        }
+        .gc-ontology a.curie-link:hover,
+        .gc-context-value a.curie-link:hover {
+            text-decoration: underline;
+            color: #4338ca;
+        }
 
         /* ── Detail / ODE cards ── */
         .ode-card {
@@ -145,42 +220,7 @@
         .pill-0 { background:#dbeafe; color:#1d4ed8; }
         .pill-1 { background:#ede9fe; color:#6d28d9; }
         .pill-2 { background:#d1fae5; color:#065f46; }
-
-        /* ── Dot indicators ── */
-        .dot-btn {
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            border: none;
-            background: #d1d5db;
-            padding: 0;
-            cursor: pointer;
-            transition: background 0.12s, width 0.12s, height 0.12s;
-        }
-        .dot-btn.active-0 { background: #3b82f6; width: 9px; height: 9px; }
-        .dot-btn.active-1 { background: #8b5cf6; width: 9px; height: 9px; }
-        .dot-btn.active-2 { background: #10b981; width: 9px; height: 9px; }
-
-        /* ── Legend dots ── */
-        .legend-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
-        .dot-0 { background:#3b82f6; }
-        .dot-1 { background:#8b5cf6; }
-        .dot-2 { background:#10b981; }
-
-        /* ── Carousel arrow buttons ── */
-        .carousel-arrow {
-            width: 26px; height: 26px;
-            border-radius: 50%;
-            border: 1px solid #d1d5db;
-            background: transparent;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1rem; line-height: 1;
-            cursor: pointer;
-            color: #6b7280;
-            transition: background 0.12s;
-            flex-shrink: 0;
-        }
-        .carousel-arrow:hover:not(:disabled) { background: #f3f4f6; }
-        .carousel-arrow:disabled { color: #d1d5db; border-color: #e5e7eb; cursor: default; }
+        .pill-3 { background:#fef3c7; color:#92400e; }
 
         /* ── Grid ── */
         #ep-grid {
@@ -196,93 +236,162 @@
             top: 50%;
             transform: translateY(-50%);
         }
+
+        /* ── Download buttons ── */
+        .dl-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.25rem 0.6rem;
+            font-size: .72rem;
+            font-weight: 600;
+            border-radius: 0.4rem;
+            border: 1px solid;
+            background: transparent;
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .dl-btn-json   { border-color: #93c5fd; color: #1d4ed8; }
+        .dl-btn-json:hover   { background: #dbeafe; }
+        .dl-btn-sbml   { border-color: #6ee7b7; color: #065f46; }
+        .dl-btn-sbml:hover   { background: #d1fae5; }
+        .dl-btn-sympy  { border-color: #c4b5fd; color: #6d28d9; }
+        .dl-btn-sympy:hover  { background: #ede9fe; }
+        .dl-btn.downloading { opacity: .6; pointer-events: none; }
+
+        /* ── Summary card eq box — scrollable ── */
+        .summary-eq-box {
+            background: #f9fafb;
+            border: 1px solid #f1f5f9;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            overflow-y: auto;
+            max-height: 200px;
+            cursor: default;
+        }
     </style>
 </head>
 <body>
-<div class="d-flex">
+<div id="app-shell">
 
-    <!-- ══════════════ SIDEBAR ══════════════ -->
-    <div id="sidebar">
-        <!-- Header -->
-        <div class="px-3 pt-3 pb-2 border-bottom">
-            <h6 class="fw-bold text-dark mb-2">Epidemic Models</h6>
-            <div class="position-relative">
-                <input id="sidebar-search" type="text"
-                       class="form-control form-control-sm"
-                       placeholder="Search PMID, title, author…"
-                       autocomplete="off">
-                <span id="search-spinner"
-                      class="spinner-border spinner-border-sm text-secondary"
-                      style="display:none;width:.85rem;height:.85rem;"></span>
-            </div>
+    <!-- ══════════════ TOP BANNER ══════════════ -->
+    <div id="top-banner">
+        <div class="banner-left">
+            <img src="/static/mira_logo_inverted.png" alt="MIRA" class="banner-logo mira-logo">
         </div>
-
-        <!-- List -->
-        <div id="sidebar-list" class="overflow-auto flex-grow-1">
-            <p class="text-muted small text-center mt-4 px-2">
-                Type to search by title, author, PMID, or grounding concept.
-            </p>
-        </div>
-
-        <!-- Legend -->
-        <div class="px-3 py-2 border-top">
-            <p class="text-uppercase text-muted fw-semibold mb-1" style="font-size:.65rem;letter-spacing:.05em">Methods</p>
-            <div class="d-flex flex-column gap-1">
-                <div class="d-flex align-items-center gap-2">
-                    <span class="legend-dot dot-0"></span>
-                    <span class="text-muted" style="font-size:.75rem">Multi-Agent Pipeline</span>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <span class="legend-dot dot-1"></span>
-                    <span class="text-muted" style="font-size:.75rem">Single Prompt</span>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <span class="legend-dot dot-2"></span>
-                    <span class="text-muted" style="font-size:.75rem">Text Extraction</span>
-                </div>
-            </div>
+        <div class="banner-right">
+            <a class="github-link" href="https://github.com/gyorilab/miradb" target="_blank" rel="noopener">
+                <i class="bi bi-github"></i>
+                View on GitHub
+            </a>
+            <img src="/static/gyorilab_logo.png" alt="Gyorilab" class="banner-logo lab-logo">
         </div>
     </div>
 
-    <!-- ══════════════ MAIN AREA ══════════════ -->
-    <div id="main-area">
+    <div id="content-row">
 
-        <!-- Grid view -->
-        <div id="grid-view">
-            <div id="ep-grid">
-                <div class="text-center text-muted small py-5 w-100">
-                    <span class="spinner-border spinner-border-sm me-1"></span> Loading…
+        <!-- ══════════════ SIDEBAR ══════════════ -->
+        <div id="sidebar">
+            <!-- Header -->
+            <div class="px-3 pt-3 pb-2 border-bottom">
+                <h6 class="fw-bold text-dark mb-2">Model search</h6>
+                <div class="position-relative">
+                    <input id="sidebar-search" type="text"
+                           class="form-control form-control-sm"
+                           placeholder="Search PMID, title, author…"
+                           autocomplete="off">
+                    <span id="search-spinner"
+                          class="spinner-border spinner-border-sm text-secondary"
+                          style="display:none;width:.85rem;height:.85rem;"></span>
                 </div>
+            </div>
+
+            <!-- List -->
+            <div id="sidebar-list" class="overflow-auto flex-grow-1">
+                <p class="text-muted small text-center mt-4 px-2">
+                    Type to search by title, author, PMID, or grounding concept.
+                </p>
             </div>
         </div>
 
-        <!-- Detail view (hidden until a paper is selected from sidebar) -->
-        <div id="detail-view" style="display:none;">
-            <button id="back-btn" class="btn btn-link btn-sm text-primary ps-0 mb-2">
-                ← Back to all epidemics
-            </button>
-            <h5 id="detail-title" class="fw-bold text-dark mb-0"></h5>
-            <p id="detail-meta" class="text-muted small mb-3"></p>
-            <p id="detail-count" class="text-uppercase text-muted fw-semibold mb-3"
-               style="font-size:.65rem;letter-spacing:.05em"></p>
-            <div id="detail-cards" class="d-flex flex-column gap-3"></div>
-        </div>
+        <!-- ══════════════ MAIN AREA ══════════════ -->
+        <div id="main-area">
 
-    </div>
-</div>
+            <!-- Grid view -->
+            <div id="grid-view">
+                <div id="ep-grid">
+                    <div class="text-center text-muted small py-5 w-100">
+                        <span class="spinner-border spinner-border-sm me-1"></span> Loading&hellip;
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detail view -->
+            <div id="detail-view" style="display:none;">
+                <button id="back-btn" class="btn btn-link btn-sm text-primary ps-0 mb-2">
+                    &larr; Back to all models
+                </button>
+                <h5 id="detail-title" class="fw-bold text-dark mb-0"></h5>
+                <p id="detail-meta" class="text-muted small mb-3"></p>
+                <p id="detail-count" class="text-uppercase text-muted fw-semibold mb-3"
+                   style="font-size:.65rem;letter-spacing:.05em"></p>
+                <div id="detail-cards" class="d-flex flex-column gap-3"></div>
+            </div>
+
+        </div>
+    </div><!-- /#content-row -->
+
+    <!-- ══════════════ FOOTER ══════════════ -->
+    <footer id="bottom-footer">
+        <span class="footer-text">MIRA-DB &middot; <a class="footer-link" href="https://gyorilab.github.io/" target="_blank" rel="noopener">Gyori Lab</a> &middot; Funded by grant HR00112220036 under the DARPA ASKEM program.</span>
+        <div class="footer-links">
+            <a class="footer-link" href="https://github.com/gyorilab/mira" target="_blank" rel="noopener">MIRA on GitHub</a>
+            <a class="footer-link" href="https://miramodel.readthedocs.io" target="_blank" rel="noopener">MIRA Documentation</a>
+            <a class="footer-link" href="https://github.com/gyorilab/miradb" target="_blank" rel="noopener">MIRA-DB on GitHub</a>
+        </div>
+    </footer>
+
+</div><!-- /#app-shell -->
 
 
 <script>
 /* ════════════════════════════════════════════════════════════
    State
 ════════════════════════════════════════════════════════════ */
-let allEpidemics = [];   // full list from /explorer/api/pmids — used for grid only
+let allEpidemics = [];
 let selectedPmid = null;
 let searchDebounceTimer = null;
-let currentSearchController = null;   // AbortController for in-flight search requests
+let currentSearchController = null;
+
+const SUMMARY_MAX_CONCURRENT = 8;
+const SUMMARY_ROOT_MARGIN = '200px';
+
+let summaryObserver = null;
+const summaryScheduled = new Set();
+const summaryQueue = [];
+const summaryPendingCards = new Map();
+let summaryInFlight = 0;
 
 /* ════════════════════════════════════════════════════════════
-   KaTeX helper — renders all \[ … \] in a container
+   Extraction method priority for summary cards
+   extraction_method values: 0=Marker, 1=MinerU Image, 2=MinerU Text, 3=XML
+   Priority: Marker > MinerU Text > XML > MinerU Image
+════════════════════════════════════════════════════════════ */
+const METHOD_PRIORITY = [0, 2, 3, 1];
+
+function pickBestModel(models) {
+    if (!models || !models.length) return null;
+    for (const preferred of METHOD_PRIORITY) {
+        const found = models.find(m => m.extraction_method === preferred);
+        if (found) return found;
+    }
+    return models[0];
+}
+
+/* ════════════════════════════════════════════════════════════
+   KaTeX helper
 ════════════════════════════════════════════════════════════ */
 function renderKatex(container) {
     if (!window.renderMathInElement) {
@@ -298,7 +407,6 @@ function renderKatex(container) {
     });
 }
 
-/* Wrap a LaTeX string for display-mode KaTeX */
 function wrapLatex(lines) {
     return lines.map(l => `\\[ ${l} \\]`).join('\n');
 }
@@ -319,14 +427,14 @@ function renderSidebar(list) {
         <button class="sidebar-item ${selectedPmid === ep.pmid ? 'active' : ''}"
                 data-pmid="${ep.pmid}">
             <div class="fw-medium text-dark" style="font-size:.78rem;line-height:1.3">
-                ${escHtml(ep.title || ep.pmid)}
+                ${titleOrPmidHtml(ep, true)}
             </div>
             <div class="text-muted" style="font-size:.7rem;margin-top:2px">
-                PMID ${ep.pmid}
-                · ${ep.model_count} model${ep.model_count !== 1 ? 's' : ''}
+                ${pmidLabelHtml(ep.pmid, true)}
+                ${ep.model_count ? `&middot; ${ep.model_count} extraction${ep.model_count !== 1 ? 's' : ''}` : ''}
             </div>
             <div class="text-muted" style="font-size:.7rem">
-                ${escHtml(ep.author_list || '')}${ep.pub_year ? ' · ' + ep.pub_year : ''}
+                ${escHtml(ep.author_list || '')}${ep.pub_year ? ' &middot; ' + ep.pub_year : ''}
             </div>
         </button>
     `).join('');
@@ -338,17 +446,11 @@ function renderSidebar(list) {
 
 /* ════════════════════════════════════════════════════════════
    Server-side search
-   - Debounces 300 ms after the last keystroke
-   - Cancels any in-flight request before issuing a new one
-   - Returns empty list + hint text when query is blank
 ════════════════════════════════════════════════════════════ */
 const searchSpinner = document.getElementById('search-spinner');
 
 async function runSearch(q) {
-    // Cancel previous in-flight fetch
-    if (currentSearchController) {
-        currentSearchController.abort();
-    }
+    if (currentSearchController) currentSearchController.abort();
 
     if (!q) {
         renderSidebar([]);
@@ -365,7 +467,7 @@ async function runSearch(q) {
         const results = await resp.json();
         renderSidebar(results);
     } catch (err) {
-        if (err.name === 'AbortError') return;   // superseded by a newer request
+        if (err.name === 'AbortError') return;
         document.getElementById('sidebar-list').innerHTML =
             `<p class="text-danger small text-center mt-4 px-2">Search failed.</p>`;
         console.error('Search error:', err);
@@ -382,15 +484,79 @@ document.getElementById('sidebar-search').addEventListener('input', function () 
 });
 
 /* ════════════════════════════════════════════════════════════
+   Grid summary load (lazy + concurrency cap)
+════════════════════════════════════════════════════════════ */
+function scheduleSummaryLoad(pmid, card) {
+    if (summaryScheduled.has(pmid)) return;
+    summaryScheduled.add(pmid);
+    if (card) summaryPendingCards.set(pmid, card);
+    summaryQueue.push(pmid);
+    drainSummaryQueue();
+}
+
+async function drainSummaryQueue() {
+    while (summaryInFlight < SUMMARY_MAX_CONCURRENT && summaryQueue.length) {
+        const pmid = summaryQueue.shift();
+        summaryInFlight++;
+        let ok = false;
+        try {
+            ok = await loadSummaryCard(pmid);
+        } finally {
+            summaryInFlight--;
+            if (ok) {
+                const card = summaryPendingCards.get(pmid);
+                if (card && summaryObserver) summaryObserver.unobserve(card);
+                summaryPendingCards.delete(pmid);
+            } else {
+                summaryScheduled.delete(pmid);
+                summaryPendingCards.delete(pmid);
+            }
+            drainSummaryQueue();
+        }
+    }
+}
+
+function teardownLazySummaryCards() {
+    if (summaryObserver) {
+        summaryObserver.disconnect();
+        summaryObserver = null;
+    }
+    summaryQueue.length = 0;
+    summaryScheduled.clear();
+    summaryPendingCards.clear();
+}
+
+function setupLazySummaryCards(grid) {
+    teardownLazySummaryCards();
+
+    const scrollRoot = document.getElementById('main-area');
+    if (!scrollRoot) return;
+
+    summaryObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const pmid = entry.target.dataset.pmid;
+            if (pmid) scheduleSummaryLoad(pmid, entry.target);
+        }
+    }, {
+        root: scrollRoot,
+        rootMargin: SUMMARY_ROOT_MARGIN,
+        threshold: 0,
+    });
+
+    grid.querySelectorAll('.ep-summary-card').forEach(card => {
+        summaryObserver.observe(card);
+    });
+}
+
+/* ════════════════════════════════════════════════════════════
    Grid view
 ════════════════════════════════════════════════════════════ */
 function renderGrid() {
     const grid = document.getElementById('ep-grid');
     grid.innerHTML = allEpidemics.map(ep => buildSummaryCard(ep)).join('');
 
-    allEpidemics.forEach(ep => {
-        initSummaryCarousel(ep.pmid);
-    });
+    setupLazySummaryCards(grid);
 
     grid.querySelectorAll('.ep-summary-card').forEach(card => {
         card.addEventListener('click', () => openDetail(card.dataset.pmid));
@@ -400,19 +566,17 @@ function renderGrid() {
 function buildSummaryCard(ep) {
     return `
     <div class="ep-summary-card" data-pmid="${ep.pmid}">
-        <!-- Paper metadata -->
         <div class="px-3 py-2 border-bottom">
             <div class="fw-semibold text-dark" style="font-size:.8rem;line-height:1.35;
                  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                 ${escHtml(ep.title || ep.pmid)}
             </div>
             <div class="text-muted" style="font-size:.72rem;margin-top:2px">
-                ${escHtml(ep.author_list || '')}${ep.pub_year ? ' · ' + ep.pub_year : ''} · PMID ${ep.pmid}
+                ${escHtml(ep.author_list || '')}${ep.pub_year ? ' &middot; ' + ep.pub_year : ''} &middot; ${pmidLabelHtml(ep.pmid, true)}
+
             </div>
         </div>
-
-        <!-- Carousel -->
-        <div class="px-3 py-2" id="carousel-${ep.pmid}">
+        <div class="px-3 py-2" id="card-body-${ep.pmid}">
             <div class="text-center text-muted small py-3">
                 <span class="spinner-border spinner-border-sm"></span>
             </div>
@@ -420,79 +584,37 @@ function buildSummaryCard(ep) {
     </div>`;
 }
 
-/* Fetch models for one card and initialise its carousel */
-async function initSummaryCarousel(pmid) {
-    const container = document.getElementById(`carousel-${pmid}`);
-    if (!container) return;
+/* Fetch models, pick the best one by priority, render a single static card */
+async function loadSummaryCard(pmid) {
+    const container = document.getElementById(`card-body-${pmid}`);
+    if (!container) return false;
 
     try {
         const resp   = await fetch(`/explorer/api/pmids/${encodeURIComponent(pmid)}/models`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const models = await resp.json();
 
         if (!models.length) {
             container.innerHTML = '<p class="text-muted small text-center py-2">No models stored.</p>';
-            return;
+            return true;
         }
 
-        let idx = 0;
+        const m = pickBestModel(models);
 
-        function renderCarousel() {
-            const m     = models[idx];
-            const total = models.length;
+        container.innerHTML = `
+            <div class="summary-eq-box" id="eqbox-${pmid}"
+                 onclick="event.stopPropagation()">
+                ${wrapLatex(m.latex)}
+            </div>
+        `;
 
-            container.innerHTML = `
-                <!-- Model nav row -->
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <button class="carousel-arrow" id="prev-${pmid}" ${idx === 0 ? 'disabled' : ''}>‹</button>
-
-                    <div class="d-flex flex-column align-items-center gap-1 flex-grow-1 mx-2">
-                        <span class="badge rounded-pill pill-${m.extraction_method}"
-                              style="font-size:.7rem;font-weight:600">
-                            ${escHtml(m.method_label)}
-                        </span>
-                        <div class="d-flex gap-1 align-items-center">
-                            ${models.map((mm, i) => `
-                                <button class="dot-btn ${i === idx ? 'active-' + mm.extraction_method : ''}"
-                                        data-dot-idx="${i}"></button>
-                            `).join('')}
-                        </div>
-                        <span class="text-muted" style="font-size:.7rem">
-                            Model ${idx + 1} of ${total}
-                        </span>
-                    </div>
-
-                    <button class="carousel-arrow" id="next-${pmid}" ${idx === total - 1 ? 'disabled' : ''}>›</button>
-                </div>
-
-                <!-- Equation box -->
-                <div class="eq-box" id="eqbox-${pmid}">
-                    ${wrapLatex(m.latex)}
-                </div>
-            `;
-
-            renderKatex(document.getElementById(`eqbox-${pmid}`));
-
-            container.querySelector(`#prev-${pmid}`).addEventListener('click', e => {
-                e.stopPropagation(); idx = Math.max(idx - 1, 0); renderCarousel();
-            });
-            container.querySelector(`#next-${pmid}`).addEventListener('click', e => {
-                e.stopPropagation(); idx = Math.min(idx + 1, total - 1); renderCarousel();
-            });
-
-            container.querySelectorAll('.dot-btn').forEach(btn => {
-                btn.addEventListener('click', e => {
-                    e.stopPropagation();
-                    idx = parseInt(btn.dataset.dotIdx);
-                    renderCarousel();
-                });
-            });
-        }
-
-        renderCarousel();
+        renderKatex(document.getElementById(`eqbox-${pmid}`));
+        return true;
 
     } catch (err) {
         container.innerHTML = `<p class="text-danger small text-center py-2">Failed to load models.</p>`;
         console.error(err);
+        return false;
     }
 }
 
@@ -511,13 +633,17 @@ async function openDetail(pmid) {
     document.getElementById('detail-view').style.display = 'block';
 
     document.getElementById('detail-title').textContent = ep?.title || pmid;
-    document.getElementById('detail-meta').textContent  =
-        [ep?.author_list, ep?.pub_year, `PMID ${pmid}`].filter(Boolean).join(' · ');
+    document.getElementById('detail-meta').innerHTML =
+        [
+            ep?.author_list ? escHtml(ep.author_list) : '',
+            ep?.pub_year ? escHtml(String(ep.pub_year)) : '',
+            pmidLabelHtml(pmid),
+        ].filter(Boolean).join(' · ');
 
     const cardsEl = document.getElementById('detail-cards');
     cardsEl.innerHTML = `
         <div class="text-center text-muted py-5">
-            <span class="spinner-border spinner-border-sm me-1"></span> Loading models…
+            <span class="spinner-border spinner-border-sm me-1"></span> Loading models&hellip;
         </div>`;
 
     try {
@@ -528,18 +654,37 @@ async function openDetail(pmid) {
             `${models.length} extraction result${models.length !== 1 ? 's' : ''}`;
 
         if (!models.length) {
-            cardsEl.innerHTML = '<p class="text-muted">No models stored for this PMID.</p>';
+            cardsEl.innerHTML = `<p class="text-muted">No models stored for this ${pmidLabelHtml(pmid)}.</p>`;
             return;
         }
 
         cardsEl.innerHTML = models.map(m => `
             <div class="ode-card">
-                <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-light">
-                    <span class="badge rounded-pill pill-${m.extraction_method}"
-                          style="font-size:.75rem;font-weight:600">
-                        ${escHtml(m.method_label)}
-                    </span>
-                    <span class="text-muted small">${m.latex.length} equation${m.latex.length !== 1 ? 's' : ''}</span>
+                <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-light flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge rounded-pill pill-${m.extraction_method}"
+                              style="font-size:.75rem;font-weight:600">
+                            ${escHtml(m.method_label)}
+                        </span>
+                        <span class="text-muted small">${m.latex.length} equation${m.latex.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="dl-btn dl-btn-json"
+                                data-model-id="${m.id}" data-format="json"
+                                title="MIRA TemplateModel JSON">
+                            <i class="bi bi-filetype-json"></i> JSON
+                        </button>
+                        <button class="dl-btn dl-btn-sbml"
+                                data-model-id="${m.id}" data-format="sbml"
+                                title="SBML">
+                            <i class="bi bi-file-earmark-code"></i> SBML
+                        </button>
+                        <button class="dl-btn dl-btn-sympy"
+                                data-model-id="${m.id}" data-format="sympy"
+                                title="ODEs as SymPy (MIRA OdeModel)">
+                            <i class="bi bi-file-earmark-text"></i> SymPy
+                        </button>
+                    </div>
                 </div>
                 <div class="ode-card-body">
                     <div class="flex-grow-1">
@@ -561,8 +706,53 @@ async function openDetail(pmid) {
             if (box) renderKatex(box);
         });
 
+        // Wire up download buttons
+        cardsEl.querySelectorAll('.dl-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                triggerDownload(btn.dataset.modelId, btn.dataset.format, btn);
+            });
+        });
+
     } catch (err) {
         cardsEl.innerHTML = `<div class="alert alert-danger">Failed to load models: ${err.message}</div>`;
+    }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Download handler
+════════════════════════════════════════════════════════════ */
+const FORMAT_META = {
+    json:  { ext: 'json',  mime: 'application/json',  label: 'JSON'  },
+    sbml:  { ext: 'xml',   mime: 'application/xml',   label: 'SBML'  },
+    sympy: { ext: 'py',    mime: 'text/plain',        label: 'SymPy' },
+};
+
+async function triggerDownload(modelId, format, btn) {
+    const meta = FORMAT_META[format];
+    btn.classList.add('downloading');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem;"></span> ${meta.label}`;
+
+    try {
+        const resp = await fetch(`/explorer/api/models/${encodeURIComponent(modelId)}/download/${format}`);
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+
+        const blob = await resp.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `model_${modelId}.${meta.ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert(`Download failed: ${err.message}`);
+        console.error('Download error:', err);
+    } finally {
+        btn.innerHTML = originalHTML;
+        btn.classList.remove('downloading');
     }
 }
 
@@ -577,13 +767,13 @@ document.getElementById('back-btn').addEventListener('click', () => {
 });
 
 /* ════════════════════════════════════════════════════════════
-   Bootstrap
+   Init
 ════════════════════════════════════════════════════════════ */
 async function init() {
     try {
         const resp   = await fetch('/explorer/api/pmids');
         allEpidemics = await resp.json();
-        renderSidebar([]);   // sidebar starts empty — search populates it
+        renderSidebar([]);
         renderGrid();
     } catch (err) {
         document.getElementById('sidebar-list').innerHTML =
@@ -594,35 +784,30 @@ async function init() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   Build grounding concepts panel HTML
+   Grounding concepts panel
 ════════════════════════════════════════════════════════════ */
 function buildGroundingPanel(concepts) {
     if (!concepts || !Object.keys(concepts).length) {
         return '<p class="text-muted" style="font-size:.72rem">No grounding data.</p>';
     }
-
     return Object.entries(concepts).map(([varName, data]) => {
         const ids = data.identifiers
             ? Object.entries(data.identifiers)
-                .map(([k, v]) => `${k}:${v}`)
+                .map(([k, v]) => curieLinkHtml(`${k}:${v}`, true))
                 .join(', ')
             : '';
-
         const ctxRows = data.context
-            ? Object.entries(data.context)
-                .map(([k, v]) => `
+            ? Object.entries(data.context).map(([k, v]) => `
                     <div class="gc-context-row">
                         <span class="gc-context-key">${escHtml(k)}:</span>
-                        <span class="gc-context-value"> ${escHtml(String(v))}</span>
-                    </div>`)
-                .join('')
+                        <span class="gc-context-value"> ${formatContextValue(v)}</span>
+                    </div>`).join('')
             : '';
-
         return `
             <div class="gc-var-row">
                 <div>
                     <span class="gc-var-name">${escHtml(varName)}</span>
-                    ${ids ? `<span class="gc-ontology">${escHtml(ids)}</span>` : ''}
+                    ${ids ? `<span class="gc-ontology">${ids}</span>` : ''}
                 </div>
                 ${ctxRows}
             </div>`;
@@ -636,6 +821,43 @@ function escHtml(str) {
     return String(str)
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
         .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+const CURIE_RE = /^[a-zA-Z][\w.-]*:[^\s,;]+$/;
+
+function isCurie(str) {
+    return CURIE_RE.test(String(str).trim());
+}
+
+function bioregistryUrl(curie) {
+    return `https://bioregistry.io/${curie}`;
+}
+
+function curieLinkHtml(curie, stopClick) {
+    const stop = stopClick ? ' onclick="event.stopPropagation()"' : '';
+    return `<a class="curie-link" href="${bioregistryUrl(curie)}" target="_blank" rel="noopener noreferrer"${stop}>${escHtml(curie)}</a>`;
+}
+
+function formatContextValue(v) {
+    const s = String(v).trim();
+    return isCurie(s) ? curieLinkHtml(s, true) : escHtml(String(v));
+}
+
+function pubmedUrl(pmid) {
+    return `https://bioregistry.io/pubmed:${encodeURIComponent(pmid)}`;
+}
+
+function pmidLinkHtml(pmid, stopClick) {
+    const stop = stopClick ? ' onclick="event.stopPropagation()"' : '';
+    return `<a class="pmid-link" href="${pubmedUrl(pmid)}" target="_blank" rel="noopener noreferrer"${stop}>${escHtml(pmid)}</a>`;
+}
+
+function pmidLabelHtml(pmid, stopClick) {
+    return `PMID ${pmidLinkHtml(pmid, stopClick)}`;
+}
+
+function titleOrPmidHtml(ep, stopClick) {
+    return ep.title ? escHtml(ep.title) : pmidLinkHtml(ep.pmid, stopClick);
 }
 
 init();

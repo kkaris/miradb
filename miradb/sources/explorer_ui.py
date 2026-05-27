@@ -1,16 +1,19 @@
 import logging
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, send_file, abort
 from sqlalchemy import select, Table, MetaData, func, or_, cast, Text, literal
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import text as sa_text
 from sympy import latex, Derivative
 import json 
-from db.manager import get_db
+import io
+import math
+from miradb.db.manager import get_db
 from mira.modeling import Model
 from mira.modeling.ode import OdeModel
 from mira.metamodel import TemplateModel
 from mira.metamodel.template_model import Time
+from mira.modeling.sbml import template_model_to_sbml_string
 
 
 logger = logging.getLogger(__name__)
@@ -21,7 +24,7 @@ explorer_blueprint.template_folder = "templates"
 # ── DB setup ──────────────
 
 db = get_db('primary')
-engine = db.engine 
+engine = db.engine
 
 metadata = MetaData()
 text_references      = Table("text_references",      metadata, autoload_with=engine)
@@ -32,15 +35,13 @@ mira_template_models = Table("mira_template_models", metadata, autoload_with=eng
 Session = sessionmaker(bind=engine)
 
 
-EXTRACTION_METHOD_LABELS = {
-    0: "Multi-Agent Image Pipeline",
-    1: "MinerU CPU Text Extraction",
-    2: "Misccc Extraction",
+extraction_method_LABELS = {
+    1: "Marker Extraction",
+    2: "MinerU Image Pipeline",
+    3: "MinerU Text Extraction",
+    4: "XML Extraction",
 }
 
-def _pick_ode(row) -> str:
-    """Return corrected_ode if present, else ode."""
-    return row["corrected_ode"] or ""
 
 def _derivative_to_latex(expr) -> str:
     """Render Derivative(X, t) as \\frac{dX}{dt} instead of \\frac{d}{dt} X."""
@@ -50,71 +51,62 @@ def _derivative_to_latex(expr) -> str:
     return latex(expr)
 
 
-def _ode_str_to_latex_lines(ode) -> list[str]:
-    with Session() as session:
-        tm = session.execute(
-            select(mira_template_models).where(
-                mira_template_models.c.ode_ref == ode["id"]
-            )
-        ).mappings().first()
+def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
+    if not tm or not tm.get("mira_template_model"):
+        return [], []
 
-        if not tm or not tm.get("mira_template_model"):
-            return [], []
+    try:
+        raw = tm["mira_template_model"]
+        if isinstance(raw, str):
+            raw = json.loads(raw)
 
-        try:
-            raw = tm["mira_template_model"]
-            if isinstance(raw, str):
-                raw = json.loads(raw)
+        loaded_model = TemplateModel.from_json(raw)
+        loaded_model.time = Time(name='t', units=None)
 
-            loaded_model = TemplateModel.from_json(raw)
-            loaded_model.time = Time(name='t', units=None)
+        om = OdeModel(
+            model=Model(template_model=loaded_model),
+            initialized=False,
+        )
 
-            om = OdeModel(
-                model=Model(template_model=loaded_model),
-                initialized=False,
-            )
+        # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix
+        kinetics = om.get_interpretable_kinetics()
 
-            # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix 
-            kinetics = om.get_interpretable_kinetics()
+        latex_lines = []
 
-            latex_lines = []
+        if hasattr(kinetics, 'tolist'):
+            rows = kinetics.tolist()
+            for row in rows:
+                if len(row) == 3:
+                    # Handle case where get_interpretable_kinetics returns (lhs, '=', rhs)
+                    lhs, _, rhs = row
+                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
+                elif len(row) == 2:
+                    # Handle case where get_interpretable_kinetics returns (lhs, rhs) without the '='
+                    lhs, rhs = row
+                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
+                else:
+                    for expr in row:
+                        latex_lines.append(latex(expr))
 
-            if hasattr(kinetics, 'tolist'):
-                rows = kinetics.tolist()
-                for row in rows:
-                    if len(row) == 3:
-                        # Handle case where get_interpretable_kinetics returns (lhs, '=', rhs)
-                        lhs, _, rhs = row
-                        latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                    elif len(row) == 2:
-                        # Handle case where get_interpretable_kinetics returns (lhs, rhs) without the '='
-                        lhs, rhs = row
-                        latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                    else:
-                        for expr in row:
-                            latex_lines.append(latex(expr))
+        elif isinstance(kinetics, (list, tuple)):
+            for expr in kinetics:
+                latex_lines.append(latex(expr))
 
-            elif isinstance(kinetics, (list, tuple)):
-                for expr in kinetics:
-                    latex_lines.append(latex(expr))
+        else:
+            latex_lines.append(latex(kinetics))
 
-            else:
-                latex_lines.append(latex(kinetics))
+        raw_gc = tm.get("grounded_concepts")
+        if isinstance(raw_gc, str):
+            try:
+                raw_gc = json.loads(raw_gc)
+            except Exception:
+                raw_gc = None
 
-            raw_gc = None
-            if tm:
-                raw_gc = tm.get("grounded_concepts")
-                if isinstance(raw_gc, str):
-                    try:
-                        raw_gc = json.loads(raw_gc)
-                    except Exception:
-                        raw_gc = None
+        return latex_lines, raw_gc
 
-            return latex_lines, raw_gc
-
-        except Exception:
-            logger.exception("Failed to render LaTeX for ode id=%s", ode["id"])
-            return [], []
+    except Exception:
+        logger.exception("Failed to render LaTeX for ode id=%s", ode_id)
+        return [], []
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -227,9 +219,9 @@ def search_pmids():
                     text_references.c.pmid.in_(gc_pmid_sq),
                 )
             )
-            .order_by(text_references.c.year.desc()),
+            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
             {"pattern": pattern}
-        ).mappings().all() 
+        ).mappings().all()
 
     return jsonify([
         {
@@ -281,7 +273,7 @@ def get_all_pmids():
                 func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
             )
             .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == text_references.c.id)
-            .order_by(text_references.c.year.desc())
+            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
         ).mappings().all()
 
     return jsonify([
@@ -305,7 +297,7 @@ def get_models_for_pmid(pmid: str):
     [
       {
         "id":                1,
-        "extraction_method": 0,
+        "extraction_method_id": 0,
         "method_label":      "Multi-Agent Pipeline",
         "latex":             ["\\frac{dS}{dt} = …", …]
         "grounded_concepts": {}
@@ -328,7 +320,7 @@ def get_models_for_pmid(pmid: str):
             )
         ).mappings().all()
 
-        results = []
+        pending = []
         for content in contents:
             odes = session.execute(
                 select(ode_expressions).where(
@@ -337,21 +329,204 @@ def get_models_for_pmid(pmid: str):
             ).mappings().all()
 
             for ode in odes:
-                ode_str   = _pick_ode(ode)
-                latex_lines, grounded_concepts = _ode_str_to_latex_lines(ode)
-                if latex_lines is None:
-                    latex_lines = [ode.corrected_ode or ode.ode]
-                method    = ode["extraction_method"]
+                pending.append(dict(ode))
 
-                results.append({
-                    "id":                 ode["id"],
-                    "extraction_method":  method,
-                    "method_label":       EXTRACTION_METHOD_LABELS.get(method, f"Method {method}"),
-                    "latex":              latex_lines,
-                    "grounded_concepts":  grounded_concepts or {},
-                })
+        tm_by_ode_id = {}
+        ode_ids = [ode["id"] for ode in pending]
+        if ode_ids:
+            tm_rows = session.execute(
+                select(mira_template_models).where(
+                    mira_template_models.c.ode_ref.in_(ode_ids)
+                )
+            ).mappings().all()
+            tm_by_ode_id = {row["ode_ref"]: dict(row) for row in tm_rows}
 
-        # Sort by extraction_method so cards appear in a consistent order
-        results.sort(key=lambda r: r["extraction_method"])
+        pending = [(ode, tm_by_ode_id.get(ode["id"])) for ode in pending]
+
+    results = []
+    for ode, tm in pending:
+        latex_lines, grounded_concepts = _template_to_latex_lines(tm, ode["id"])
+        if not latex_lines:
+            latex_lines = [ode.get("corrected_ode") or ode.get("ode")]
+        method = ode["extraction_method_id"]
+
+        results.append({
+            "id":                 ode["id"],
+            "extraction_method":  method - 1,  # convert to 0-based for frontend
+            "method_label":       extraction_method_LABELS.get(method, f"Method {method}"),
+            "latex":              latex_lines,
+            "grounded_concepts":  grounded_concepts or {},
+        })
+
+    # Sort by extraction_method so cards appear in a consistent order
+    results.sort(key=lambda r: r["extraction_method"])
 
     return jsonify(results)
+
+
+def _get_template_model_for_ode(session, ode_id: int):
+    """
+    Look up the mira_template_models row whose ode_ref == ode_id and
+    deserialize it into a TemplateModel.  Returns None if not found.
+    """
+    row = session.execute(
+        select(mira_template_models).where(
+            mira_template_models.c.ode_ref == ode_id
+        )
+    ).mappings().first()
+ 
+    if not row or not row.get("mira_template_model"):
+        return None
+ 
+    raw = row["mira_template_model"]
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+
+    loaded_model = TemplateModel.from_json(raw)
+    loaded_model.time = Time(name='t', units=None)
+ 
+    return loaded_model
+ 
+@explorer_blueprint.route("/api/models/<int:ode_id>/download/json")
+def download_json(ode_id: int):
+    """Export the MIRA TemplateModel as JSON."""
+    with Session() as session:
+        tm = _get_template_model_for_ode(session, ode_id)
+ 
+    if tm is None:
+        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+ 
+    json_bytes = json.dumps(tm.model_dump(), indent=2).encode("utf-8")
+ 
+    return send_file(
+        io.BytesIO(json_bytes),
+        mimetype="application/json",
+        as_attachment=True,
+        download_name=f"model_{ode_id}.json",
+    )
+ 
+ 
+def _sanitize_tm_for_sbml(tm):
+    """Replace None/non-numeric parameter values with 0.0 for SBML export."""
+    for param in tm.parameters.values():
+        if param.value is None or (isinstance(param.value, float) and math.isnan(param.value)):
+            param.value = 0.0
+        elif not isinstance(param.value, (int, float)):
+            try:
+                param.value = float(param.value)
+            except (TypeError, ValueError):
+                param.value = 0.0
+    return tm
+
+
+@explorer_blueprint.route("/api/models/<int:ode_id>/download/sbml")
+def download_sbml(ode_id: int):
+    """Export the model as SBML via MIRA."""
+ 
+    with Session() as session:
+        tm = _get_template_model_for_ode(session, ode_id)
+ 
+    if tm is None:
+        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+ 
+    try:
+        # for name, param in tm.parameters.items():
+        #     if not isinstance(getattr(param, 'value', None), (int, float)):
+        #         logger.warning(f"Bad param for SBML: {name!r} = {param.value!r} ({type(param.value)})")
+        tm_clean = _sanitize_tm_for_sbml(tm.model_copy(deep=True))  # don't mutate original
+        sbml_str = template_model_to_sbml_string(tm_clean)
+    except Exception:
+        logger.exception("SBML export failed for ode_id=%s", ode_id)
+        abort(500, description="SBML export failed — see server logs.")
+ 
+    return send_file(
+        io.BytesIO(sbml_str.encode()),
+        mimetype="application/xml",
+        as_attachment=True,
+        download_name=f"model_{ode_id}.xml",
+    )
+ 
+ 
+@explorer_blueprint.route("/api/models/<int:ode_id>/download/sympy")
+def download_sympy(ode_id: int):
+    """
+    Export ODEs as a SymPy .py file via MIRA's OdeModel.
+    Uses the same OdeModel construction as _ode_str_to_latex_lines so the
+    output is consistent with what is displayed in the UI.
+    """
+    with Session() as session:
+        tm = _get_template_model_for_ode(session, ode_id)
+ 
+    if tm is None:
+        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+ 
+    try:
+        tm.time = Time(name="t", units=None)
+        om = OdeModel(model=Model(template_model=tm), initialized=False)
+        kinetics = om.get_interpretable_kinetics()
+ 
+        # Collect (lhs_str, rhs_str) pairs
+        ode_pairs = []
+        if hasattr(kinetics, "tolist"):
+            for row in kinetics.tolist():
+                if len(row) == 3:
+                    lhs, _, rhs = row
+                    ode_pairs.append((str(lhs), str(rhs)))
+                elif len(row) == 2:
+                    lhs, rhs = row
+                    ode_pairs.append((str(lhs), str(rhs)))
+        elif isinstance(kinetics, (list, tuple)):
+            for expr in kinetics:
+                ode_pairs.append((str(expr), ""))
+        else:
+            ode_pairs.append((str(kinetics), ""))
+ 
+    except Exception:
+        logger.exception("SymPy export failed for ode_id=%s", ode_id)
+        abort(500, description="SymPy ODE export failed — see server logs.")
+ 
+    # ── Build the .py file ────────────────────────────────────────────────────
+    lines = [
+        "from sympy import *",
+        "",
+    ]
+ 
+    # Declare all symbols that appear across lhs + rhs
+    all_symbols: set[str] = set()
+    import re
+    symbol_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
+    skip = {"Derivative", "Function", "Symbol", "symbols", "t"}
+    for lhs, rhs in ode_pairs:
+        for token in symbol_re.findall(lhs + " " + rhs):
+            if token not in skip:
+                all_symbols.add(token)
+ 
+    if all_symbols:
+        lines.append("# Declare symbols")
+        lines.append(f"{', '.join(sorted(all_symbols))} = symbols('{' '.join(sorted(all_symbols))}')")
+        lines.append("")
+ 
+    for lhs, rhs in ode_pairs:
+        if rhs:
+            lines.append(f"# {lhs} = {rhs}")
+        else:
+            lines.append(f"# {lhs}")
+ 
+    lines += [
+        "",
+        "odes = {",
+    ]
+    for lhs, rhs in ode_pairs:
+        if rhs:
+            lines.append(f"    {lhs!r}: {rhs},")
+    lines.append("}")
+ 
+    py_str = "\n".join(lines) + "\n"
+ 
+    return send_file(
+        io.BytesIO(py_str.encode()),
+        mimetype="text/plain",
+        as_attachment=True,
+        download_name=f"model_{ode_id}.py",
+    )
+

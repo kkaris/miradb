@@ -25,9 +25,9 @@ def get_db(name):
 
 
 class MiraDatabaseManager(object):
-    """A parent class used to manage sessions with in MIRA's databases."""
+    """A parent class used to manage sessions within the MIRA-DB database."""
 
-    table_order = [ 'text_references', 'text_contents', 'ode_expressions', 'mira_template_models']
+    table_order = [ 'text_references', 'extraction_method', 'text_contents', 'ode_expressions', 'mira_template_models']
     table_parent_class = EpiTable
 
     def __init__(self, host, label=None):
@@ -44,7 +44,7 @@ class MiraDatabaseManager(object):
         return MiraDatabaseSessionManager(self.host, self.engine)
     
     def create_tables(self, tables=None):
-        """Create the tables from the MIRA database
+        """Create the tables from the MIRA-DB database
 
         Optionally specify `tables` to be created. List may contain either
         table objects or the string names of the tables.
@@ -73,7 +73,7 @@ class MiraDatabaseManager(object):
         return
     
     def drop_tables(self, tables=None, force=False):
-        """Drop the tables from the MIRA database given in `tables`.
+        """Drop the tables from the MIRA-DB database given in `tables`.
 
         If `tables` is None, all tables will be dropped. Note that if `force`
         is False, a warning prompt will be raised to asking for confirmation,
@@ -153,7 +153,7 @@ class MiraModelManager(MiraDatabaseManager):
         """
         try:
             with self.get_session() as sess:
-                p = TextRef(pmid=pmid, pmcid=pmcid, doi=doi)
+                p = TextRef(pmid=pmid, pmcid=pmcid, doi=doi, authors=authors, title=title, journal=journal, year=year, keywords=keywords)
                 sess.add(p)
                 sess.flush()
                 sess.refresh(p)
@@ -215,7 +215,7 @@ class MiraModelManager(MiraDatabaseManager):
     
     def get_text_ref(self, pmid: str):
         """
-        Retrieve a paper's text identifiers from the MIRA database by its PubMed ID.
+        Retrieve a paper's text identifiers from the MIRA-DB database by its PubMed ID.
         Parameters
         ----------  
         pmid : str
@@ -232,7 +232,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     def get_all_text_refs(self):
         """
-        Retrieve all papers' text identifiers from the MIRA database.
+        Retrieve all papers' text identifiers from the MIRA-DB database.
         Returns
         -------
         list of dict
@@ -266,7 +266,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     # ── Paper Source ────────────────────────────────────────────────────────────────
 
-    def add_text_content(self, text_ref: int, folder_path: str, extraction_method: int, extracted_info_path: str):
+    def add_text_content(self, text_ref: int, folder_path: str, extraction_method_id: int, extracted_info_path: str):
         """
         Add a paper's source locations to the database, returning the new row's identifier.
         Parameters
@@ -275,8 +275,8 @@ class MiraModelManager(MiraDatabaseManager):
             The ID of the text context (from TextContent) that this source information is linked to.
         folder_path : str
             The relativefile path to the folder containing the paper's source files (e.g., PDFs, images).
-        extraction_method : int, optional
-            The method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
+        extraction_method_id : int, optional
+            The ID of the extraction method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
         extracted_info_path : str, optional
             The relative file path to the extracted information for the paper.
         Returns
@@ -286,7 +286,7 @@ class MiraModelManager(MiraDatabaseManager):
         """
         try:
             with self.get_session() as sess:
-                row = TextContent(text_ref=text_ref, folder_path=folder_path, extraction_method=extraction_method, extracted_info_path=extracted_info_path)
+                row = TextContent(text_ref=text_ref, folder_path=folder_path, extraction_method_id=extraction_method_id, extracted_info_path=extracted_info_path)
                 sess.add(row)
                 sess.flush()
                 sess.refresh(row)
@@ -297,18 +297,18 @@ class MiraModelManager(MiraDatabaseManager):
             return
         return source_id
     
-    def update_text_content(self, text_ref: int, folder_path: str = None, extraction_method: int = None, extracted_info_path: str = None):
+    def update_text_content(self, id: int, folder_path: str = None, extraction_method_id: int = None, extracted_info_path: str = None):
         """
         Update a paper source's information in the database.
 
         Parameters
         ----------
-        text_ref : int
+        id : int
             The ID of the text context (from TextContent) that this source information is linked to.
         folder_path : str, optional
             The realtive file path to the folder containing the paper's source files (e.g., PDFs, images).
-        extraction_method : int, optional
-            The method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
+        extraction_method_id : int, optional
+            The ID of the extraction method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
         extracted_info_path : str, optional
             The relative file path to the extracted information for the paper.
 
@@ -318,22 +318,22 @@ class MiraModelManager(MiraDatabaseManager):
             True if the paper source was found and updated, False if the paper source was not found.
         """
         with self.get_session() as sess:
-            p_source = sess.query(TextContent).filter_by(text_ref=text_ref).first()
+            p_source = sess.query(TextContent).filter_by(id=id).first()
             if not p_source:
-                logger.warning("Paper source '%s' not found.", text_ref)
+                logger.warning("Paper source '%s' not found.", id)
                 return False
             if folder_path is not None:
                 p_source.folder_path = folder_path
-            if extraction_method is not None:
-                p_source.extraction_method = extraction_method
+            if extraction_method_id is not None:
+                p_source.extraction_method_id = extraction_method_id
             if extracted_info_path is not None:
                 p_source.extracted_info_path = extracted_info_path
-            logger.info("Updated paper source '%s'.", text_ref)
+            logger.info("Updated paper source '%s'.", id)
         return True
     
     def get_text_content(self, text_ref: int):
         """
-        Retrieve a paper's source information from the MIRA database by the paper's ID.
+        Retrieve a paper's source information from the MIRA-DB database by the paper's ID.
 
         Parameters
         ----------  
@@ -343,15 +343,15 @@ class MiraModelManager(MiraDatabaseManager):
         -------
         dict or None
             A dictionary containing the paper source information if found, or None if not found.
-            Dictionary keys: 'source_id', 'text_ref', 'folder_path', 'extraction_method', 'extracted_info_path', 'created_at', 'updated_at'
+            Dictionary keys: 'source_id', 'text_ref', 'folder_path', 'extraction_method_id', 'extracted_info_path', 'created_at', 'updated_at'
         """
         with self.get_session() as sess:
-            p_source = sess.query(TextContent).filter_by(text_ref=text_ref).first()
-            return p_source.to_dict() if p_source else None
+            p_source = sess.query(TextContent).filter_by(text_ref=text_ref).all()
+            return [p.to_dict() for p in p_source] if p_source else None
 
     def get_all_text_contents(self):
         """
-        Retrieve all papers' source information from the MIRA database.
+        Retrieve all papers' source information from the MIRA-DB database.
 
         Returns
         -------
@@ -378,17 +378,18 @@ class MiraModelManager(MiraDatabaseManager):
             True if the paper source was found and deleted, False if the paper source was not found.
         """
         with self.get_session() as sess:
-            p = sess.query(TextContent).filter_by(text_ref=text_ref).first()
+            p = sess.query(TextContent).filter_by(text_ref=text_ref).all()
             if not p:
                 logger.warning("Paper source '%s' not found.", text_ref)
                 return False
-            sess.delete(p)
+            for item in p:
+                sess.delete(item)
             logger.info("Deleted paper source '%s' and all linked rows.", text_ref)
         return True
     
     # ── ODE Equations ─────────────────────────────────────────────────────────
 
-    def add_odes(self, txt_content_ref: int, extraction_method: int, ode: str, corrected_ode: str= None):
+    def add_odes(self, txt_content_ref: int, extraction_method_id: int, ode: str, corrected_ode: str= None):
         """
         Add a paper's ODE equations extracted by MinerU to the database, returning the new row's identifier.
 
@@ -400,8 +401,8 @@ class MiraModelManager(MiraDatabaseManager):
             The ODE string extracted by MinerU for this paper.
         corrected_ode : str, optional
             A corrected version of the ODE string, if it exists. Can be the same as `ode` if no correction was needed.
-        extraction_method : int
-            The method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
+        extraction_method_id : int
+            The ID of the extraction method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
 
         Returns
         -------
@@ -410,7 +411,7 @@ class MiraModelManager(MiraDatabaseManager):
         """
         try:
             with self.get_session() as sess:
-                p = ODEs(txt_content_ref=txt_content_ref, ode=ode, corrected_ode=corrected_ode, extraction_method=extraction_method)
+                p = ODEs(txt_content_ref=txt_content_ref, ode=ode, corrected_ode=corrected_ode, extraction_method_id=extraction_method_id)
                 sess.add(p)
                 sess.flush()
                 sess.refresh(p)
@@ -424,7 +425,7 @@ class MiraModelManager(MiraDatabaseManager):
             return
         return ode_id
     
-    def update_odes(self, txt_content_ref: int, extraction_method: int, ode: str = None, corrected_ode: str = None):
+    def update_odes(self, txt_content_ref: int, extraction_method_id: int, ode: str = None, corrected_ode: str = None):
         """
         Update a paper's ODE equations in the database.
 
@@ -436,8 +437,8 @@ class MiraModelManager(MiraDatabaseManager):
             The new ODE string extracted by MinerU for this paper.
         corrected_ode : str, optional
             A new corrected version of the ODE string, if it exists. Can be the same as `ode` if no correction was needed.
-        extraction_method : int
-            The method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
+        extraction_method_id : int
+            The ID of the extraction method used to extract the ODE string (0 = MinerU, 1 = UniMERNet, 2 = marker).
 
         Returns
         -------
@@ -453,14 +454,14 @@ class MiraModelManager(MiraDatabaseManager):
                 odes.ode = ode
             if corrected_ode is not None:
                 odes.corrected_ode = corrected_ode
-            if extraction_method is not None:
-                odes.extraction_method = extraction_method
+            if extraction_method_id is not None:
+                odes.extraction_method_id = extraction_method_id
             logger.info("Updated ODEs for txt_content_ref '%s'.", txt_content_ref)
         return True
     
     def get_odes(self, txt_content_ref: int):
         """
-        Retrieve a paper's ODE equations from the MIRA database by the txt_content_ref.
+        Retrieve a paper's ODE equations from the MIRA-DB database by the txt_content_ref.
 
         Parameters
         ----------  
@@ -470,7 +471,7 @@ class MiraModelManager(MiraDatabaseManager):
         -------
         dict or None
             A dictionary containing the ODE information if found, or None if not found.
-            Dictionary keys: 'ode_id', 'txt_content_ref', 'ode', 'corrected_ode', 'extraction_method', 'created_at', 'updated_at'
+            Dictionary keys: 'ode_id', 'txt_content_ref', 'ode', 'corrected_ode', 'extraction_method_id', 'created_at', 'updated_at'
         """
         with self.get_session() as sess:
             odes = sess.query(ODEs).filter_by(txt_content_ref=txt_content_ref).first()
@@ -478,7 +479,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     def get_all_odes(self):
         """
-        Retrieve all papers' ODE equations from the MIRA database.
+        Retrieve all papers' ODE equations from the MIRA-DB database.
 
         Returns
         -------
@@ -578,7 +579,7 @@ class MiraModelManager(MiraDatabaseManager):
     
     def get_tm(self, ode_ref: int):
         """
-        Retrieve an ODE's MIRA template model information from the MIRA database by the ODE's ID.
+        Retrieve an ODE's MIRA template model information from the MIRA-DB database by the ODE's ID.
 
         Parameters
         ----------
@@ -597,7 +598,7 @@ class MiraModelManager(MiraDatabaseManager):
 
     def get_all_tms(self):
         """
-        Retrieve all papers' MIRA template model information from the MIRA database.
+        Retrieve all papers' MIRA template model information from the MIRA-DB database.
 
         Returns
         -------
