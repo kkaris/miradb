@@ -16,6 +16,12 @@ dependencies = [
     "mira @ git+https://github.com/gyorilab/mira.git",
 ]
 
+[project.optional-dependencies]
+comparison = [
+    "rapidfuzz",
+    "zss",
+]
+
 [project.urls]
 Repository = "https://github.com/gyorilab/miradb"
 
