@@ -65,7 +65,7 @@ model. The schema draws on and adapts patterns from
 | `ode_expressions` | Raw and corrected ODE strings parsed from extracted content, linked to a `text_contents` record |
 | `mira_template_models` | Grounded MIRA `TemplateModel` JSON and grounded concepts, linked to a source `ode_expressions` record |
 
-### Provenance Chain
+### Model provenance
 
 Each record in the database traces a full lineage from paper to model:
 
@@ -83,20 +83,22 @@ method does not require a schema migration. The one-to-many chain from
 `text_references` down lets multiple extraction methods coexist for the same
 paper, enabling head-to-head method comparison.
 
-### Model Similarity Scoring
+### Equation extraction benchmarking
 
-Pairwise model comparison uses a three-layer scoring system:
+Automatically extracted model equations are compared to a gold standard
+using three-layer scoring system:
 
 1. **Compartment Jaccard similarity** — fuzzy compartment name matching via
-   `rapidfuzz`
+   `rapidfuzz`.
 2. **Term-set Jaccard similarity** — symbolic ODE term comparison with scalar
-   stripping via `SymPy`
+   stripping via `SymPy`.
 3. **Tree Edit Distance (TED)** — structural comparison of expression trees
-   via the `zss` library
+   via the `zss` library. The derived Tree Edit Similarity (TES) is used 
+   as a normalized score between 0 and 1.
 
-## Web Explorer
+## Web explorer
 
-The Flask app under `miradb/sources/` serves the model explorer at the
+A Flask app under `miradb/sources/` serves the model explorer at the
 `/explorer` route. It supports text search across publication metadata
 and grounded concepts, and renders each stored `TemplateModel` back to
 LaTeX ODE equations using MIRA's `OdeModel`. Run it locally with:
