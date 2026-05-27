@@ -1,5 +1,3 @@
-import sys
-import os
 import logging
 from pathlib import Path
 
@@ -12,9 +10,7 @@ from miradb.db.manager import get_db, MiraModelManager
 from miradb.compare.equation import compare_models
 
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('benchmark.compare')
 
 
 def generate_report(report: dict, e1: int, pmid: str):
@@ -85,48 +81,44 @@ def generate_score_only_report(report: dict, e1: int, pmid: str):
         f.write(f"{pmid};{e1};{report_cj};{report_tj};{report_ted}\n")
 
 
-# ----------------------------------
-# MAIN
-# ----------------------------------
+if __name__ == "__main__":
+    progress_file = Path("results/report_score.csv")
+    print(f"Saving progress to {progress_file}")
 
+    db = get_db('primary')
+    mira_db = MiraModelManager(db.host)
+    Session = sessionmaker(bind=mira_db.engine)
 
-progress_file = Path("results/report_score.csv")
-print(f"Saving progress to {progress_file}")
+    gold_standard = pd.read_csv("resources/eqs_list.tsv", sep="\t")
 
-db = get_db('primary')
-mira_db = MiraModelManager(db.host)
-Session = sessionmaker(bind=mira_db.engine)
- 
-gold_standard = pd.read_csv("resources/eqs_list.tsv", sep="\t")     
+    for idx in range(len(gold_standard)):
+        pmid = gold_standard.iloc[idx]["pmid"]
+        if np.isnan(pmid):
+            print(f"PMID {pmid} not found in text_references table.")
+            continue
 
-for idx in range(len(gold_standard)):
-    pmid = gold_standard.iloc[idx]["pmid"]
-    if np.isnan(pmid):
-        print(f"PMID {pmid} not found in text_references table.")
-        continue
+        pmidref = mira_db.get_text_ref(pmid=str(int(pmid)))
+        if not pmidref:
+            print(f"PMID {pmid} not found in text_references table.")
+            continue
+        row = gold_standard[gold_standard['pmid'] == pmid]
+        if row.empty:
+            print(f"PMID {pmid} not found")
+            continue
+        gold_standard_odes = gold_standard.iloc[idx]["corrected_sympy"]
+        if gold_standard_odes == "":
+            print(f"No gold standard ODEs provided for PMID {pmid}. Skipping.")
+            continue
 
-    pmidref = mira_db.get_text_ref(pmid=str(int(pmid)))
-    if not pmidref:
-        print(f"PMID {pmid} not found in text_references table.")
-        continue
-    row = gold_standard[gold_standard['pmid'] == pmid]
-    if row.empty:
-        print(f"PMID {pmid} not found")
-        continue
-    gold_standard_odes = gold_standard.iloc[idx]["corrected_sympy"]
-    if gold_standard_odes == "":
-        print(f"No gold standard ODEs provided for PMID {pmid}. Skipping.")
-        continue
-    
-    with Session() as session:
-        p_source = session.query(TextContent).filter_by(text_ref=pmidref["id"]).all()
-        for item in p_source:
-            p_source = session.query(ODEs).filter_by(txt_content_ref=item.id).first()
-            try:
-                report = compare_models(gold_standard_odes, p_source.corrected_ode)
-            except Exception as e:
-                print(f"Error occurred while comparing models for PMID {pmid}: {e}")
-                continue
-            generate_score_only_report(report, p_source.extraction_method_id, pmid)
-            # OR - For detialed report:
-            # generate_report(report, p_source.extraction_method_id, pmid)
+        with Session() as session:
+            p_source = session.query(TextContent).filter_by(text_ref=pmidref["id"]).all()
+            for item in p_source:
+                p_source = session.query(ODEs).filter_by(txt_content_ref=item.id).first()
+                try:
+                    report = compare_models(gold_standard_odes, p_source.corrected_ode)
+                except Exception as e:
+                    print(f"Error occurred while comparing models for PMID {pmid}: {e}")
+                    continue
+                generate_score_only_report(report, p_source.extraction_method_id, pmid)
+                # OR - For detialed report:
+                # generate_report(report, p_source.extraction_method_id, pmid)
