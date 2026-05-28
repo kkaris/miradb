@@ -14,6 +14,6 @@ ENV PATH="$VENV_PATH/bin:$PATH"
 
 # Setup pip and install miradb
 RUN pip install --upgrade pip && \
-    pip install "miradb @ git+https://github.com/gyorilab/miradb.git@dockerize"
+    pip install "miradb @ git+https://github.com/gyorilab/miradb.git"
 
 ENTRYPOINT ["gunicorn", "-w", "2", "-t", "300", "-b", "0.0.0.0:5000", "miradb.sources.app:app"]
