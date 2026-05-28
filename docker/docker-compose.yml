@@ -1,5 +1,8 @@
 services:
   db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     image: miradb.postgres:latest
     environment:
       POSTGRES_PASSWORD: miradb
