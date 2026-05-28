@@ -1,1 +1,41 @@
-todo
+services:
+  db:
+    image: miradb.postgres:latest
+    environment:
+      POSTGRES_PASSWORD: miradb
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mira_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - miradb_net
+    # Uncomment for host-level DB debugging:
+    # ports:
+    #   - "5433:5432"
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: miradb.app:latest
+    ports:
+      - "5000:5000"
+    environment:
+      MIRADB_DB_HOST: db
+      MIRADB_DB_PORT: "5432"
+      MIRADB_DB_USER: postgres
+      MIRADB_DB_PASSWORD: miradb
+      MIRADB_DB_NAME: mira_db
+      MIRADB_DB_DIALECT: postgresql
+      MIRADB_DB_DRIVER: psycopg
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - miradb_net
+
+networks:
+  miradb_net:
+    driver: bridge
