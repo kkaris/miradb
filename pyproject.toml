@@ -13,6 +13,7 @@ dependencies = [
     "flask",
     "sqlalchemy>=2",
     "click",
+    "gunicorn",
     "mira @ git+https://github.com/gyorilab/mira.git",
 ]
 

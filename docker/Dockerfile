@@ -20,5 +20,4 @@ RUN mkdir -p /root/.config/indra && \
 # Install miradb
 RUN pip install "miradb @ git+https://github.com/gyorilab/miradb.git@dockerize"
 
-# Set entypoint
-ENTRYPOINT ["python", "-m", "miradb.sources.app", "--port", "5000"]
+ENTRYPOINT ["gunicorn", "-w", "2", "-t", "300", "-b", "0.0.0.0:5000", "miradb.sources.app:app"]
