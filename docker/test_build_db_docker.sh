@@ -1,50 +1,48 @@
 #!/bin/bash
 
-echo "Building miradb Docker Image"
+echo "Building miradb postgres image"
 
 set -euo pipefail
-set -x
 
-PGPASSWORD="miradb"
-PORT="5433"
-DATABASE="mira_db"
-CONTAINER_NAME="mira_db_container"
-PG_VERSION="17"
-IMAGE="postgres:17"
 IMAGE_TAG="miradb.postgres:latest"
+VERIFY="${VERIFY:-1}"
+CONTAINER_NAME="mira_db_verify"
+DATABASE="mira_db"
+PGPASSWORD="miradb"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DUMP_FILE="$SCRIPT_DIR/mira_db.sql"
 
 if [[ ! -f "$DUMP_FILE" ]]; then
-  echo "Dump file not found: $DUMP_FILE. Please put dump file in $SCRIPT_DIR" >&2
+  echo "Dump file not found: $DUMP_FILE" >&2
+  echo "Place mira_db.sql in $SCRIPT_DIR (or fetch from S3 / git lfs pull) before building." >&2
   exit 1
 fi
 
-docker pull "$IMAGE"
+docker build -f "$SCRIPT_DIR/Dockerfile.postgres" -t "$IMAGE_TAG" "$SCRIPT_DIR"
+echo "Built image: $IMAGE_TAG"
+
+if [[ "$VERIFY" != "1" ]]; then
+  exit 0
+fi
 
 cid=$(docker ps -aq --filter "name=^/${CONTAINER_NAME}$")
 if [[ -n "$cid" ]]; then
-  echo "Removing existing container: $cid"
   docker rm -f "$cid"
 fi
 
 docker run \
-  -p "${PORT}:5432" \
   --name "$CONTAINER_NAME" \
   --detach \
   -e POSTGRES_PASSWORD="$PGPASSWORD" \
   -e POSTGRES_DB="$DATABASE" \
-  -e PGDATA=/var/lib/postgresql/pgdata \
   --shm-size 1gb \
-  "$IMAGE"
+  "$IMAGE_TAG"
 
-until docker exec "$CONTAINER_NAME" pg_isready -U postgres >/dev/null 2>&1; do
+until docker exec "$CONTAINER_NAME" pg_isready -U postgres -d "$DATABASE" >/dev/null 2>&1; do
   echo "Waiting for Postgres..."
-  sleep 1
+  sleep 2
 done
-
-docker exec -i "$CONTAINER_NAME" psql -U postgres -d "$DATABASE" -v ON_ERROR_STOP=1 < "$DUMP_FILE"
 
 echo "Checking database is populated with the following tables:"
 
@@ -55,6 +53,5 @@ docker exec "$CONTAINER_NAME" psql -U postgres -d "$DATABASE" -c \
    UNION ALL SELECT 'text_contents', count(*) FROM text_contents
    UNION ALL SELECT 'text_references', count(*) FROM text_references;"
 
-docker stop "$CONTAINER_NAME"
-docker commit "$CONTAINER_NAME" "$IMAGE_TAG"
-echo "Built image: $IMAGE_TAG"
+docker rm -f "$CONTAINER_NAME"
+echo "Verification passed."
