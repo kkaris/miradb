@@ -107,6 +107,12 @@ LaTeX ODE equations using MIRA's `OdeModel`. Run it locally with:
 python -m miradb.sources.app
 ```
 
+## Docker
+
+A two-container setup (PostgreSQL + app) is defined under [`docker/`](docker/).
+See [docker/README.md](docker/README.md) for building the DB image from `mira_db.sql` and
+running with Compose.
+
 ## Installation
 
 Requires Python 3.10 or later.
