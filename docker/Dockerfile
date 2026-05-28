@@ -12,12 +12,8 @@ ENV VENV_PATH=$DIRPATH/venv
 RUN python -m venv $VENV_PATH
 ENV PATH="$VENV_PATH/bin:$PATH"
 
-# Setup
-RUN mkdir -p /root/.config/indra && \
-    echo "[indra]" > /root/.config/indra/config.ini && \
-    pip install --upgrade pip
-
-# Install miradb
-RUN pip install "miradb @ git+https://github.com/gyorilab/miradb.git@dockerize"
+# Setup pip and install miradb
+RUN pip install --upgrade pip && \
+    pip install "miradb @ git+https://github.com/gyorilab/miradb.git@dockerize"
 
 ENTRYPOINT ["gunicorn", "-w", "2", "-t", "300", "-b", "0.0.0.0:5000", "miradb.sources.app:app"]
