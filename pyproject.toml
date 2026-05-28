@@ -14,7 +14,7 @@ dependencies = [
     "sqlalchemy>=2",
     "click",
     "gunicorn",
-    "mira @ git+https://github.com/gyorilab/mira.git",
+    "mira[sbml,ode] @ git+https://github.com/gyorilab/mira.git",
 ]
 
 [project.optional-dependencies]
