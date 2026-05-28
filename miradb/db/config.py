@@ -72,8 +72,8 @@ def get_databases(force_update=False, include_config=True):
         db_host = environ.get(f'{ENV_PREFIX}_DB_HOST')
         if db_host:
             component_dict = {
-                'dialect': environ.get(f'{ENV_PREFIX}_DB_DIALECT', 'postgres'),
-                'driver': environ.get(f'{ENV_PREFIX}_DB_DRIVER', ''),
+                'dialect': environ.get(f'{ENV_PREFIX}_DB_DIALECT', 'postgresql'),
+                'driver': environ.get(f'{ENV_PREFIX}_DB_DRIVER', 'psycopg'),
                 'username': environ.get(f'{ENV_PREFIX}_DB_USER', 'postgres'),
                 'password': environ.get(f'{ENV_PREFIX}_DB_PASSWORD', 'miradb'),
                 'host': db_host,

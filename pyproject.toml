@@ -14,6 +14,7 @@ dependencies = [
     "sqlalchemy>=2",
     "click",
     "gunicorn",
+    "psycopg[binary]",
     "mira[sbml,ode] @ git+https://github.com/gyorilab/mira.git",
 ]
 
