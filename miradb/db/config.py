@@ -36,6 +36,26 @@ if not path.exists(DB_CONFIG_PATH) and CONFIG_EXISTS:
 DATABASES = None
 
 
+def _format_db_url(def_dict):
+    if def_dict['host']:
+        def_dict['host'] = '@' + def_dict['host']
+    def_dict['prefix'] = def_dict['dialect']
+    if def_dict['driver']:
+        def_dict['prefix'] += '+' + def_dict['driver']
+    if def_dict['port']:
+        def_dict['port'] = ':' + def_dict['port']
+    if def_dict['password']:
+        def_dict['password'] = ':' + def_dict['password']
+    return DB_STR_FMT.format(**def_dict)
+
+
+def _get_db_with_type(db_url):
+    parts = db_url.split(';', 1)
+    url = parts[0]
+    db_type = parts[1] if len(parts) > 1 else 'query'
+    return url, db_type
+
+
 def get_databases(force_update=False, include_config=True):
     global DATABASES
     if DATABASES is None or force_update:
@@ -46,23 +66,28 @@ def get_databases(force_update=False, include_config=True):
             for db_name in parser.sections():
                 def_dict = {k: parser.get(db_name, k)
                             for k in parser.options(db_name)}
-                if def_dict['host']:
-                    def_dict['host'] = '@' + def_dict['host']
-                def_dict['prefix'] = def_dict['dialect']
-                if def_dict['driver']:
-                    def_dict['prefix'] += '+' + def_dict['driver']
-                if def_dict['port']:
-                    def_dict['port'] = ':' + def_dict['port']
-                if def_dict['password']:
-                    def_dict['password'] = ':' + def_dict['password']
-                DATABASES[db_name] = (DB_STR_FMT.format(**def_dict),
+                DATABASES[db_name] = (_format_db_url(def_dict),
                                       def_dict.get('type', 'query'))
 
-        def get_db_with_type(db_url):
-            conf = db_url.split(';')
-            return conf
+        db_host = environ.get(f'{ENV_PREFIX}_DB_HOST')
+        if db_host:
+            component_dict = {
+                'dialect': environ.get(f'{ENV_PREFIX}_DB_DIALECT', 'postgres'),
+                'driver': environ.get(f'{ENV_PREFIX}_DB_DRIVER', ''),
+                'username': environ.get(f'{ENV_PREFIX}_DB_USER', 'postgres'),
+                'password': environ.get(f'{ENV_PREFIX}_DB_PASSWORD', 'miradb'),
+                'host': db_host,
+                'port': environ.get(f'{ENV_PREFIX}_DB_PORT', '5432'),
+                'name': environ.get(f'{ENV_PREFIX}_DB_NAME', 'mira_db'),
+            }
+            DATABASES['primary'] = (
+                _format_db_url(component_dict),
+                environ.get(f'{ENV_PREFIX}_DB_TYPE', 'query')
+            )
 
-        DATABASES.update({k[len(ENV_PREFIX):].lower(): get_db_with_type(v)
+        DATABASES.update({k[len(ENV_PREFIX):].lstrip('_').lower():
+                          _get_db_with_type(v)
                           for k, v in environ.items()
-                          if k.startswith(ENV_PREFIX)})
+                          if k.startswith(ENV_PREFIX)
+                          and not k.startswith(f'{ENV_PREFIX}_DB_')})
     return DATABASES
