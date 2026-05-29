@@ -9,47 +9,83 @@ Two images: **Postgres** (needs `mira_db.sql`) and the **miradb app**.
 
 ## Build the database image
 
-The dump is copied into the image at build time and loaded on **first container start** when the data directory (in the container) is empty (`docker-entrypoint-initdb.d`).
+The dump is copied into the image at build time and loaded on **first container
+start** when the data directory (in the container) is empty 
+(`docker-entrypoint-initdb.d`).
 
+Run this code to do a standaline build of the db container, start it and print table
+statistics:
 ```bash
 cd docker
 ./build_db_docker.sh
 ```
 
-Optional: tag the image for release:
-
+Optional: tag the image with a  for release:
 ```bash
 IMAGE_TAG=miradb.postgres:2026-05 ./build_db_docker.sh
 docker push ghcr.io/your-org/miradb-postgres:2026-05
 ```
 
-Skip the post-build verification run:
-
-```bash
-VERIFY=0 ./build_db_docker.sh
-```
-
 ## Run the stack
 
+Run the full stack with:
 ```bash
 cd docker
 docker compose up --build
 ```
-
+Once the stack is started, you should be able to go to the landing page and
+check the health endpoint:
 - App: http://localhost:5000 (redirects to `/explorer`)
 - Health: http://localhost:5000/health
 
-Database connection is configured via `MIRADB_DB_*` in `docker-compose.yml` (see `.env.example`).
+Database connection is configured via `MIRADB_DB_*` in `docker-compose.yml`.
 
 ## DB dump update
 
-1. Replace `mira_db.sql` with the latest dump.
-2. Rebuild, optionally with a new image tag: `IMAGE_TAG=miradb.postgres:YYYY-MM ./build_db_docker.sh`
-3. On each host, use a **new empty data directory** so init runs again:
-   - Compose: `docker compose down -v` then `docker compose up`
-   - Or remove the old Postgres volume manually before starting the new image tag
+Replace `mira_db.sql` with the new dump, then rebuild the **db** image and 
+start with a **fresh** Postgres data volume. The dump is baked into the image 
+at build time; init scripts run only when `PGDATA` is empty.
 
-If an old volume is reused, Postgres will **not** re-import the SQL even if the image changed.
+From the `docker/` directory:
+
+```bash
+# 1. Rebuild the db image (re-copy mira_db.sql into the image)
+docker compose build db
+
+# If the image still looks stale, force a clean rebuild:
+# docker compose build --no-cache db
+
+# 2. Remove containers and the old DB volume (with -v), then start the stack
+docker compose down -v
+docker compose up -d
+```
+
+The above commands in one line:
+```bash
+docker compose build db && docker compose down -v && docker compose up -d
+```
+
+Optional: build and verify outside Compose, then run the stack:
+
+```bash
+IMAGE_TAG=miradb.postgres:YYYY-MM ./test_build_db_docker.sh
+docker compose down -v
+docker compose up -d
+```
+
+### Get row counts from the database
+
+```bash
+docker compose exec db psql -U postgres -d mira_db -c \
+  "SELECT 'extraction_method' AS t, count(*) FROM extraction_method
+   UNION ALL SELECT 'mira_template_models', count(*) FROM mira_template_models
+   UNION ALL SELECT 'ode_expressions', count(*) FROM ode_expressions
+   UNION ALL SELECT 'text_contents', count(*) FROM text_contents
+   UNION ALL SELECT 'text_references', count(*) FROM text_references;"
+```
+
+If counts or the landing page at `/explorer` still reflect the old data, an old volume was reused - 
+run `docker compose down -v` again before `up`.
 
 ## Files
 
