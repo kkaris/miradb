@@ -16,4 +16,7 @@ ENV PATH="$VENV_PATH/bin:$PATH"
 RUN pip install --upgrade pip && \
     pip install "miradb @ git+https://github.com/gyorilab/miradb.git"
 
-ENTRYPOINT ["gunicorn", "-w", "2", "-t", "300", "-b", "0.0.0.0:5000", "miradb.sources.app:app"]
+# Set so worker and Python output appear promptly in docker logs
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["gunicorn", "-w", "2", "-t", "300", "-b", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "--capture-output", "miradb.sources.app:app"]
