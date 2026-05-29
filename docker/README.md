@@ -17,12 +17,12 @@ Run this code to do a standaline build of the db container, start it and print t
 statistics:
 ```bash
 cd docker
-./build_db_docker.sh
+./test_build_db_docker.sh
 ```
 
 Optional: tag the image with a  for release:
 ```bash
-IMAGE_TAG=miradb.postgres:2026-05 ./build_db_docker.sh
+IMAGE_TAG=miradb.postgres:2026-05 ./test_build_db_docker.sh
 docker push ghcr.io/your-org/miradb-postgres:2026-05
 ```
 
@@ -94,4 +94,4 @@ run `docker compose down -v` again before `up`.
 | `Dockerfile.postgres` | Postgres 17 + dump in `initdb.d` |
 | `Dockerfile` | App image (miradb + Gunicorn) |
 | `docker-compose.yml` | `db` + `app` on `miradb_net` |
-| `build_db_docker.sh` | `docker build` + optional table-count verification |
+| `test_build_db_docker.sh` | `docker build` + optional table-count verification |
