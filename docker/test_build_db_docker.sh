@@ -4,7 +4,7 @@ echo "Building miradb postgres image"
 
 set -euo pipefail
 
-IMAGE_TAG="miradb.postgres:latest"
+IMAGE_TAG="${IMAGE_TAG:-miradb.postgres:latest}"
 VERIFY="${VERIFY:-1}"
 CONTAINER_NAME="mira_db_verify"
 DATABASE="mira_db"
