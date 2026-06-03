@@ -9,6 +9,8 @@ import json
 import io
 import math
 from miradb.db.manager import get_db
+from miradb.db.client import get_client
+from miradb.db import queries
 from mira.modeling import Model
 from mira.modeling.ode import OdeModel
 from mira.metamodel import TemplateModel
@@ -22,6 +24,8 @@ explorer_blueprint = Blueprint("explorer", __name__, url_prefix="/explorer")
 explorer_blueprint.template_folder = "templates"
 
 # ── DB setup ──────────────
+
+client = get_client('primary')
 
 db = get_db('primary')
 engine = db.engine
@@ -237,8 +241,7 @@ def search_pmids():
 
 @explorer_blueprint.route("/api/pmids")
 def get_all_pmids():
-    """
-    Returns every text_reference with a count of its associated ode_expressions.
+    """Return every text_reference with a count of its associated ode_expressions.
 
     Response shape (list):
     [
@@ -252,40 +255,8 @@ def get_all_pmids():
       …
     ]
     """
-    with Session() as session:
-        # Subquery: count ode_expressions reachable from each text_reference
-        ode_count_sq = (
-        select(
-            text_contents.c.text_ref,
-            func.count(ode_expressions.c.id).label("ode_count"),
-        )
-        .join(ode_expressions, ode_expressions.c.txt_content_ref == text_contents.c.id, isouter=True)
-        .group_by(text_contents.c.text_ref)
-        .subquery()
-        )
-
-        rows = session.execute(
-            select(
-                text_references.c.pmid,
-                text_references.c.title,
-                text_references.c.authors,
-                text_references.c.year,
-                func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
-            )
-            .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == text_references.c.id)
-            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
-        ).mappings().all()
-
-    return jsonify([
-        {
-            "pmid":        r["pmid"],
-            "title":       r["title"] or "",
-            "author_list": ", ".join(r["authors"]) if r["authors"] else "",
-            "pub_year":    r["year"],
-            "model_count": r["model_count"],
-        }
-        for r in rows
-    ])
+    rows = queries.list_publication_summaries(client)
+    return jsonify(rows)
 
 
 @explorer_blueprint.route("/api/pmids/<pmid>/models")
