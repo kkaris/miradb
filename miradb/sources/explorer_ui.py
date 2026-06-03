@@ -4,7 +4,6 @@ from flask import Blueprint, jsonify, render_template, request, send_file, abort
 from sqlalchemy import select, Table, MetaData, func, or_, cast, Text, literal
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import text as sa_text
-from sympy import latex, Derivative
 import json
 import io
 import math
@@ -37,80 +36,6 @@ ode_expressions      = Table("ode_expressions",      metadata, autoload_with=eng
 mira_template_models = Table("mira_template_models", metadata, autoload_with=engine)
 
 Session = sessionmaker(bind=engine)
-
-
-extraction_method_LABELS = {
-    1: "Marker Extraction",
-    2: "MinerU Image Pipeline",
-    3: "MinerU Text Extraction",
-    4: "XML Extraction",
-}
-
-
-def _derivative_to_latex(expr) -> str:
-    """Render Derivative(X, t) as \\frac{dX}{dt} instead of \\frac{d}{dt} X."""
-    if isinstance(expr, Derivative) and len(expr.args) == 2:
-        var, (wrt, _) = expr.args
-        return r"\frac{d" + latex(var) + r"}{d" + latex(wrt) + r"}"
-    return latex(expr)
-
-
-def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
-    if not tm or not tm.get("mira_template_model"):
-        return [], []
-
-    try:
-        raw = tm["mira_template_model"]
-        if isinstance(raw, str):
-            raw = json.loads(raw)
-
-        loaded_model = TemplateModel.from_json(raw)
-        loaded_model.time = Time(name='t', units=None)
-
-        om = OdeModel(
-            model=Model(template_model=loaded_model),
-            initialized=False,
-        )
-
-        # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix
-        kinetics = om.get_interpretable_kinetics()
-
-        latex_lines = []
-
-        if hasattr(kinetics, 'tolist'):
-            rows = kinetics.tolist()
-            for row in rows:
-                if len(row) == 3:
-                    # Handle case where get_interpretable_kinetics returns (lhs, '=', rhs)
-                    lhs, _, rhs = row
-                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                elif len(row) == 2:
-                    # Handle case where get_interpretable_kinetics returns (lhs, rhs) without the '='
-                    lhs, rhs = row
-                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                else:
-                    for expr in row:
-                        latex_lines.append(latex(expr))
-
-        elif isinstance(kinetics, (list, tuple)):
-            for expr in kinetics:
-                latex_lines.append(latex(expr))
-
-        else:
-            latex_lines.append(latex(kinetics))
-
-        raw_gc = tm.get("grounded_concepts")
-        if isinstance(raw_gc, str):
-            try:
-                raw_gc = json.loads(raw_gc)
-            except Exception:
-                raw_gc = None
-
-        return latex_lines, raw_gc
-
-    except Exception:
-        logger.exception("Failed to render LaTeX for ode id=%s", ode_id)
-        return [], []
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -276,62 +201,7 @@ def get_models_for_pmid(pmid: str):
       …
     ]
     """
-    with Session() as session:
-        text_ref = session.execute(
-            select(text_references).where(text_references.c.pmid == pmid)
-        ).mappings().first()
-
-        if not text_ref:
-            return jsonify([])
-
-        # All text_contents rows for this reference
-        contents = session.execute(
-            select(text_contents).where(
-                text_contents.c.text_ref == text_ref["id"]
-            )
-        ).mappings().all()
-
-        pending = []
-        for content in contents:
-            odes = session.execute(
-                select(ode_expressions).where(
-                    ode_expressions.c.txt_content_ref == content["id"]
-                )
-            ).mappings().all()
-
-            for ode in odes:
-                pending.append(dict(ode))
-
-        tm_by_ode_id = {}
-        ode_ids = [ode["id"] for ode in pending]
-        if ode_ids:
-            tm_rows = session.execute(
-                select(mira_template_models).where(
-                    mira_template_models.c.ode_ref.in_(ode_ids)
-                )
-            ).mappings().all()
-            tm_by_ode_id = {row["ode_ref"]: dict(row) for row in tm_rows}
-
-        pending = [(ode, tm_by_ode_id.get(ode["id"])) for ode in pending]
-
-    results = []
-    for ode, tm in pending:
-        latex_lines, grounded_concepts = _template_to_latex_lines(tm, ode["id"])
-        if not latex_lines:
-            latex_lines = [ode.get("corrected_ode") or ode.get("ode")]
-        method = ode["extraction_method_id"]
-
-        results.append({
-            "id":                 ode["id"],
-            "extraction_method":  method - 1,  # convert to 0-based for frontend
-            "method_label":       extraction_method_LABELS.get(method, f"Method {method}"),
-            "latex":              latex_lines,
-            "grounded_concepts":  grounded_concepts or {},
-        })
-
-    # Sort by extraction_method so cards appear in a consistent order
-    results.sort(key=lambda r: r["extraction_method"])
-
+    results = queries.list_models_for_pmid(client, pmid)
     return jsonify(results)
 
 
