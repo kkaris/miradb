@@ -1,5 +1,7 @@
 import json
 import logging
+import math
+import copy
 
 from sqlalchemy import func, select
 from sympy import Derivative, latex
@@ -216,3 +218,65 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
 
     results.sort(key=lambda r: r["extraction_method"])
     return results
+
+
+def get_template_model_by_ode_id(client: MiraDatabaseClient, ode_id: int) -> TemplateModel | None:
+    """Look up the mira_template_models row whose ode_ref == ode_id and
+    deserialize it into a TemplateModel.  Returns None if not found.
+
+    Parameters
+    ----------
+    client :
+        An instance of MiraDatabaseClient.
+    ode_id :
+        The ID of the ODE.
+
+    Returns
+    -------
+    :
+        A TemplateModel if found, otherwise None.
+    """
+    row = client.query_one(
+        select(MiraModel.mira_template_model, MiraModel.grounded_concepts).where(
+            MiraModel.ode_ref == ode_id
+        )
+    )
+
+    if not row or not row.get("mira_template_model"):
+        return None
+
+    raw = row["mira_template_model"]
+
+    # Todo: should be removed once sure that the database is not returning strings
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+
+    loaded_model = TemplateModel.from_json(raw)
+    loaded_model.time = Time(name='t', units=None)
+
+    return loaded_model
+
+
+def sanitize_tm_for_sbml(tm: TemplateModel) -> TemplateModel:
+    """Replace None/non-numeric parameter values with 0.0 for SBML export.
+
+    Parameters
+    ----------
+    tm :
+        The template model to sanitize.
+
+    Returns
+    -------
+    :
+        The sanitized template model.
+    """
+    sanitized_tm = copy.deepcopy(tm)
+    for param in sanitized_tm.parameters.values():
+        if param.value is None or (isinstance(param.value, float) and math.isnan(param.value)):
+            param.value = 0.0
+        elif not isinstance(param.value, (int, float)):
+            try:
+                param.value = float(param.value)
+            except (TypeError, ValueError):
+                param.value = 0.0
+    return sanitized_tm

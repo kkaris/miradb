@@ -6,7 +6,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import text as sa_text
 import json
 import io
-import math
 from miradb.db.manager import get_db
 from miradb.db.client import get_client
 from miradb.db import queries
@@ -205,37 +204,12 @@ def get_models_for_pmid(pmid: str):
     return jsonify(results)
 
 
-def _get_template_model_for_ode(session, ode_id: int):
-    """
-    Look up the mira_template_models row whose ode_ref == ode_id and
-    deserialize it into a TemplateModel.  Returns None if not found.
-    """
-    row = session.execute(
-        select(mira_template_models).where(
-            mira_template_models.c.ode_ref == ode_id
-        )
-    ).mappings().first()
-
-    if not row or not row.get("mira_template_model"):
-        return None
-
-    raw = row["mira_template_model"]
-    if isinstance(raw, str):
-        raw = json.loads(raw)
-
-    loaded_model = TemplateModel.from_json(raw)
-    loaded_model.time = Time(name='t', units=None)
-
-    return loaded_model
-
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/json")
 def download_json(ode_id: int):
     """Export the MIRA TemplateModel as JSON."""
-    with Session() as session:
-        tm = _get_template_model_for_ode(session, ode_id)
-
+    tm = queries.get_template_model_by_ode_id(client, ode_id)
     if tm is None:
-        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+        abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
     json_bytes = json.dumps(tm.model_dump(), indent=2).encode("utf-8")
 
@@ -247,38 +221,20 @@ def download_json(ode_id: int):
     )
 
 
-def _sanitize_tm_for_sbml(tm):
-    """Replace None/non-numeric parameter values with 0.0 for SBML export."""
-    for param in tm.parameters.values():
-        if param.value is None or (isinstance(param.value, float) and math.isnan(param.value)):
-            param.value = 0.0
-        elif not isinstance(param.value, (int, float)):
-            try:
-                param.value = float(param.value)
-            except (TypeError, ValueError):
-                param.value = 0.0
-    return tm
-
-
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sbml")
 def download_sbml(ode_id: int):
     """Export the model as SBML via MIRA."""
-
-    with Session() as session:
-        tm = _get_template_model_for_ode(session, ode_id)
-
+    tm = queries.get_template_model_by_ode_id(client, ode_id)
     if tm is None:
-        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+        abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
     try:
-        # for name, param in tm.parameters.items():
-        #     if not isinstance(getattr(param, 'value', None), (int, float)):
-        #         logger.warning(f"Bad param for SBML: {name!r} = {param.value!r} ({type(param.value)})")
-        tm_clean = _sanitize_tm_for_sbml(tm.model_copy(deep=True))  # don't mutate original
+        tm_clean = queries.sanitize_tm_for_sbml(tm)
         sbml_str = template_model_to_sbml_string(tm_clean)
-    except Exception:
-        logger.exception("SBML export failed for ode_id=%s", ode_id)
-        abort(500, description="SBML export failed — see server logs.")
+    except Exception as e:
+        logger.error(f"SBML export failed for ode id {ode_id}")
+        logger.exception(e)
+        abort(500, description=f"SBML export failed for ode id {ode_id}")
 
     return send_file(
         io.BytesIO(sbml_str.encode()),
