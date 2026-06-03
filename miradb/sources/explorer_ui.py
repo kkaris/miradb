@@ -247,15 +247,22 @@ def download_sbml(ode_id: int):
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sympy")
 def download_sympy(ode_id: int):
     """
-    Export ODEs as a SymPy .py file via MIRA's OdeModel.
-    Uses the same OdeModel construction as _ode_str_to_latex_lines so the
-    output is consistent with what is displayed in the UI.
+    Export ODEs as a SymPy .py file derived from a MIRA TemplateModel.
+
+    Parameters
+    ----------
+    ode_id : int
+        Identifier of the ODE model to export.
+
+    Returns
+    -------
+    flask.Response
+        Downloadable SymPy .py file for the ODE model.
     """
-    with Session() as session:
-        tm = _get_template_model_for_ode(session, ode_id)
+    tm = queries.get_template_model_by_ode_id(client, ode_id)
 
     if tm is None:
-        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+        abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
     try:
         tm.time = Time(name="t", units=None)
@@ -282,7 +289,6 @@ def download_sympy(ode_id: int):
         logger.exception("SymPy export failed for ode_id=%s", ode_id)
         abort(500, description="SymPy ODE export failed — see server logs.")
 
-    # ── Build the .py file ────────────────────────────────────────────────────
     lines = [
         "from sympy import *",
         "",
