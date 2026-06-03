@@ -1,0 +1,5 @@
+FROM postgres:17
+
+ENV POSTGRES_DB=mira_db
+
+COPY mira_db.sql /docker-entrypoint-initdb.d/01-mira_db.sql

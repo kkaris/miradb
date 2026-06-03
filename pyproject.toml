@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=64", "setuptools-scm"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta:__legacy__"
 
 [project]
 name = "miradb"
@@ -13,7 +13,9 @@ dependencies = [
     "flask",
     "sqlalchemy>=2",
     "click",
-    "mira @ git+https://github.com/gyorilab/mira.git",
+    "gunicorn",
+    "psycopg[binary]",
+    "mira[sbml,ode] @ git+https://github.com/gyorilab/mira.git",
 ]
 
 [project.optional-dependencies]
