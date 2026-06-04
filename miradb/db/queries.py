@@ -320,6 +320,50 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
     return results
 
 
+def list_odes_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
+    """Return ode_expressions for a PMID as SymPy source strings.
+
+    Parameters
+    ----------
+    client
+        Database client.
+    pmid
+        PubMed ID of the publication.
+
+    Returns
+    -------
+    list of dict
+        Each dict has keys ``id``, ``extraction_method_id``, ``ode``,
+        and ``corrected_ode``.
+    """
+    pmid = str(pmid)
+    text_ref = client.query_one(
+        select(TextRef.id).where(TextRef.pmid == pmid)
+    )
+    if not text_ref:
+        return []
+
+    stmt = (
+        select(
+            ODEs.id,
+            ODEs.extraction_method_id,
+            ODEs.ode,
+            ODEs.corrected_ode,
+        )
+        .join(TextContent, ODEs.txt_content_ref == TextContent.id)
+        .where(TextContent.text_ref == text_ref["id"])
+    )
+    return [
+        {
+            "id": row["id"],
+            "extraction_method_id": row["extraction_method_id"],
+            "ode": row["ode"],
+            "corrected_ode": row["corrected_ode"],
+        }
+        for row in client.query(stmt)
+    ]
+
+
 def get_template_model_by_ode_id(client: MiraDatabaseClient, ode_id: int) -> TemplateModel | None:
     """Look up the mira_template_models row whose ode_ref == ode_id and
     deserialize it into a TemplateModel.  Returns None if not found.
