@@ -3,7 +3,8 @@ import logging
 import math
 import copy
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, literal, or_, select
+from sqlalchemy.sql.expression import text as sa_text
 from sympy import Derivative, latex
 
 from miradb.db.client import MiraDatabaseClient
@@ -86,9 +87,95 @@ def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
         return [], []
 
 
+def _ode_count_subquery(*, outer_join_odes: bool = True):
+    join_kwargs = {"isouter": True} if outer_join_odes else {}
+    return (
+        select(
+            TextContent.text_ref,
+            func.count(ODEs.id).label("ode_count"),
+        )
+        .join(ODEs, ODEs.txt_content_ref == TextContent.id, **join_kwargs)
+        .group_by(TextContent.text_ref)
+        .subquery()
+    )
+
+
+def _format_publication_summary(row) -> dict:
+    return {
+        "pmid": row["pmid"],
+        "title": row["title"] or "",
+        "author_list": ", ".join(row["authors"]) if row["authors"] else "",
+        "pub_year": int(row["year"]),
+        "model_count": int(row["model_count"]),
+    }
+
+
+def _publication_summary_select(ode_count_sq):
+    return (
+        select(
+            TextRef.pmid,
+            TextRef.title,
+            TextRef.authors,
+            TextRef.year,
+            func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
+        )
+        .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == TextRef.id)
+    )
+
+
+def _pmids_matching_grounded_concepts_subquery():
+    gc_lateral = (
+        select(
+            sa_text("var_key"),
+            sa_text("var_val"),
+        )
+        .select_from(
+            sa_text("""
+                jsonb_each(
+                    CASE
+                        WHEN jsonb_typeof(mira_template_models.grounded_concepts::jsonb) = 'array'
+                            AND jsonb_typeof(mira_template_models.grounded_concepts::jsonb -> 0) = 'object'
+                        THEN mira_template_models.grounded_concepts::jsonb -> 0
+                        WHEN jsonb_typeof(mira_template_models.grounded_concepts::jsonb) = 'object'
+                        THEN mira_template_models.grounded_concepts::jsonb
+                        ELSE '{}'::jsonb
+                    END
+                ) AS gc(var_key, var_val)
+            """)
+        )
+        .lateral("gc_rows")
+    )
+    return (
+        select(TextRef.pmid)
+        .join(TextContent, TextContent.text_ref == TextRef.id)
+        .join(ODEs, ODEs.txt_content_ref == TextContent.id)
+        .join(MiraModel, MiraModel.ode_ref == ODEs.id)
+        .join(gc_lateral, literal(True))
+        .where(
+            or_(
+                sa_text("gc_rows.var_key ILIKE :pattern"),
+                sa_text("""
+                    EXISTS (
+                        SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'identifiers') AS id(k, v)
+                        WHERE id.k ILIKE :pattern OR id.v ILIKE :pattern
+                    )
+                """),
+                sa_text("""
+                    EXISTS (
+                        SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'context') AS ctx(k, v)
+                        WHERE ctx.k ILIKE :pattern OR ctx.v ILIKE :pattern
+                    )
+                """),
+            )
+        )
+        .distinct()
+        .subquery()
+    )
+
+
 def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
     """Return every text_reference with a count of associated ode_expressions.
-    
+
     Parameters
     ----------
     client :
@@ -118,37 +205,50 @@ def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
         ...
     ]
     """
-    ode_count_sq = (
-        select(
-            TextContent.text_ref,
-            func.count(ODEs.id).label("ode_count"),
-        )
-        .join(ODEs, ODEs.txt_content_ref == TextContent.id, isouter=True)
-        .group_by(TextContent.text_ref)
-        .subquery()
-    )
+    ode_count_sq = _ode_count_subquery(outer_join_odes=True)
     stmt = (
-        select(
-            TextRef.pmid,
-            TextRef.title,
-            TextRef.authors,
-            TextRef.year,
-            func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
-        )
-        .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == TextRef.id)
+        _publication_summary_select(ode_count_sq)
         .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc())
     )
     rows = client.query(stmt)
-    return [
-        {
-            "pmid": row["pmid"],
-            "title": row["title"] or "",
-            "author_list": ", ".join(row["authors"]) if row["authors"] else "",
-            "pub_year": int(row["year"]),
-            "model_count": int(row["model_count"]),
-        }
-        for row in rows
-    ]
+    return [_format_publication_summary(row) for row in rows]
+
+
+def search_publication_summaries(client: MiraDatabaseClient, q: str) -> list[dict]:
+    """Search text_references by metadata and grounded_concepts JSON.
+
+    Parameters
+    ----------
+    client :
+        An instance of MiraDatabaseClient.
+    q :
+        Search string (non-empty; callers should validate).
+
+    Returns
+    -------
+    :
+        A list of publication summary dicts. Matches against pmid, title,
+        authors, year, and grounded_concepts (variable names, ontology IDs,
+        context keys and values).
+    """
+    pattern = f"%{q.lower()}%"
+    ode_count_sq = _ode_count_subquery(outer_join_odes=False)
+    gc_pmid_sq = _pmids_matching_grounded_concepts_subquery()
+    stmt = (
+        _publication_summary_select(ode_count_sq)
+        .where(
+            or_(
+                TextRef.pmid.ilike(pattern),
+                TextRef.title.ilike(pattern),
+                cast(TextRef.authors, Text).ilike(pattern),
+                cast(TextRef.year, Text).ilike(pattern),
+                TextRef.pmid.in_(gc_pmid_sq),
+            )
+        )
+        .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc())
+    )
+    rows = client.query(stmt, {"pattern": pattern})
+    return [_format_publication_summary(row) for row in rows]
 
 
 def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:

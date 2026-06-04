@@ -1,12 +1,8 @@
 import logging
 
 from flask import Blueprint, jsonify, render_template, request, send_file, abort
-from sqlalchemy import select, Table, MetaData, func, or_, cast, Text, literal
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql.expression import text as sa_text
 import json
 import io
-from miradb.db.manager import get_db
 from miradb.db.client import get_client
 from miradb.db import queries
 from mira.modeling import Model
@@ -21,23 +17,7 @@ logger = logging.getLogger(__name__)
 explorer_blueprint = Blueprint("explorer", __name__, url_prefix="/explorer")
 explorer_blueprint.template_folder = "templates"
 
-# ── DB setup ──────────────
-
 client = get_client('primary')
-
-db = get_db('primary')
-engine = db.engine
-
-metadata = MetaData()
-text_references      = Table("text_references",      metadata, autoload_with=engine)
-text_contents        = Table("text_contents",        metadata, autoload_with=engine)
-ode_expressions      = Table("ode_expressions",      metadata, autoload_with=engine)
-mira_template_models = Table("mira_template_models", metadata, autoload_with=engine)
-
-Session = sessionmaker(bind=engine)
-
-
-# ── Routes ───────────────────────────────────────────────────────────────────
 
 @explorer_blueprint.route("/")
 def index():
@@ -64,103 +44,7 @@ def search_pmids():
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
-
-    pattern = f"%{q.lower()}%"
-
-    with Session() as session:
-        # Subquery: count ode_expressions per text_reference
-        ode_count_sq = (
-            select(
-                text_contents.c.text_ref,
-                func.count(ode_expressions.c.id).label("ode_count"),
-            )
-            .join(ode_expressions, ode_expressions.c.txt_content_ref == text_contents.c.id)
-            .group_by(text_contents.c.text_ref)
-            .subquery()
-        )
-
-        # Define the lateral subquery properly
-        gc_lateral = (
-            select(
-                sa_text("var_key"),
-                sa_text("var_val"),
-            )
-            .select_from(
-                sa_text("""
-                    jsonb_each(
-                        CASE
-                            WHEN jsonb_typeof(mira_template_models.grounded_concepts::jsonb) = 'array'
-                                AND jsonb_typeof(mira_template_models.grounded_concepts::jsonb -> 0) = 'object'
-                            THEN mira_template_models.grounded_concepts::jsonb -> 0
-                            WHEN jsonb_typeof(mira_template_models.grounded_concepts::jsonb) = 'object'
-                            THEN mira_template_models.grounded_concepts::jsonb
-                            ELSE '{}'::jsonb
-                        END
-                    ) AS gc(var_key, var_val)
-                """)
-            )
-            .lateral("gc_rows")
-        )
-
-        gc_pmid_sq = (
-            select(text_references.c.pmid)
-            .join(text_contents, text_contents.c.text_ref == text_references.c.id)
-            .join(ode_expressions, ode_expressions.c.txt_content_ref == text_contents.c.id)
-            .join(mira_template_models, mira_template_models.c.ode_ref == ode_expressions.c.id)
-            .join(gc_lateral, literal(True))
-            .where(
-                or_(
-                    sa_text("gc_rows.var_key ILIKE :pattern"),
-                    sa_text("""
-                        EXISTS (
-                            SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'identifiers') AS id(k, v)
-                            WHERE id.k ILIKE :pattern OR id.v ILIKE :pattern
-                        )
-                    """),
-                    sa_text("""
-                        EXISTS (
-                            SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'context') AS ctx(k, v)
-                            WHERE ctx.k ILIKE :pattern OR ctx.v ILIKE :pattern
-                        )
-                    """),
-                )
-            )
-            .distinct()
-            .subquery()
-        )
-
-        rows = session.execute(
-            select(
-                text_references.c.pmid,
-                text_references.c.title,
-                text_references.c.authors,
-                text_references.c.year,
-                func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
-            )
-            .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == text_references.c.id)
-            .where(
-                or_(
-                    text_references.c.pmid.ilike(pattern),
-                    text_references.c.title.ilike(pattern),
-                    cast(text_references.c.authors, Text).ilike(pattern),
-                    cast(text_references.c.year,   Text).ilike(pattern),
-                    text_references.c.pmid.in_(gc_pmid_sq),
-                )
-            )
-            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
-            {"pattern": pattern}
-        ).mappings().all()
-
-    return jsonify([
-        {
-            "pmid":        r["pmid"],
-            "title":       r["title"] or "",
-            "author_list": ", ".join(r["authors"]) if r["authors"] else "",
-            "pub_year":    r["year"],
-            "model_count": r["model_count"],
-        }
-        for r in rows
-    ])
+    return jsonify(queries.search_publication_summaries(client, q))
 
 
 @explorer_blueprint.route("/api/pmids")
