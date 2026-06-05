@@ -9,7 +9,13 @@ from sqlalchemy.sql.expression import text as sa_text
 from sympy import Derivative, latex
 
 from miradb.db.client import MiraDatabaseClient
-from miradb.db.schema import ExtractionMethod, MiraModel, ODEs, TextContent, TextRef
+from miradb.db.schema import (
+    ExtractionMethod,
+    MiraModel,
+    ODEs,
+    TextContent,
+    TextRef,
+)
 from mira.metamodel import TemplateModel
 from mira.metamodel.template_model import Time
 from mira.modeling import Model
@@ -44,7 +50,7 @@ def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
             raw = json.loads(raw)
 
         loaded_model = TemplateModel.from_json(raw)
-        loaded_model.time = Time(name='t', units=None)
+        loaded_model.time = Time(name="t", units=None)
 
         om = OdeModel(
             model=Model(template_model=loaded_model),
@@ -54,15 +60,19 @@ def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
         kinetics = om.get_interpretable_kinetics()
         latex_lines = []
 
-        if hasattr(kinetics, 'tolist'):
+        if hasattr(kinetics, "tolist"):
             rows = kinetics.tolist()
             for row in rows:
                 if len(row) == 3:
                     lhs, _, rhs = row
-                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
+                    latex_lines.append(
+                        _derivative_to_latex(lhs) + " = " + latex(rhs)
+                    )
                 elif len(row) == 2:
                     lhs, rhs = row
-                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
+                    latex_lines.append(
+                        _derivative_to_latex(lhs) + " = " + latex(rhs)
+                    )
                 else:
                     for expr in row:
                         latex_lines.append(latex(expr))
@@ -112,16 +122,13 @@ def _format_publication_summary(row) -> dict:
 
 
 def _publication_summary_select(ode_count_sq):
-    return (
-        select(
-            TextRef.pmid,
-            TextRef.title,
-            TextRef.authors,
-            TextRef.year,
-            func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
-        )
-        .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == TextRef.id)
-    )
+    return select(
+        TextRef.pmid,
+        TextRef.title,
+        TextRef.authors,
+        TextRef.year,
+        func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
+    ).outerjoin(ode_count_sq, ode_count_sq.c.text_ref == TextRef.id)
 
 
 def _pmids_matching_grounded_concepts_subquery():
@@ -131,7 +138,8 @@ def _pmids_matching_grounded_concepts_subquery():
             sa_text("var_val"),
         )
         .select_from(
-            sa_text("""
+            sa_text(
+                """
                 jsonb_each(
                     CASE
                         WHEN jsonb_typeof(mira_template_models.grounded_concepts::jsonb) = 'array'
@@ -142,7 +150,8 @@ def _pmids_matching_grounded_concepts_subquery():
                         ELSE '{}'::jsonb
                     END
                 ) AS gc(var_key, var_val)
-            """)
+            """
+            )
         )
         .lateral("gc_rows")
     )
@@ -155,18 +164,22 @@ def _pmids_matching_grounded_concepts_subquery():
         .where(
             or_(
                 sa_text("gc_rows.var_key ILIKE :pattern"),
-                sa_text("""
+                sa_text(
+                    """
                     EXISTS (
                         SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'identifiers') AS id(k, v)
                         WHERE id.k ILIKE :pattern OR id.v ILIKE :pattern
                     )
-                """),
-                sa_text("""
+                """
+                ),
+                sa_text(
+                    """
                     EXISTS (
                         SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'context') AS ctx(k, v)
                         WHERE ctx.k ILIKE :pattern OR ctx.v ILIKE :pattern
                     )
-                """),
+                """
+                ),
             )
         )
         .distinct()
@@ -207,15 +220,16 @@ def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
     ]
     """
     ode_count_sq = _ode_count_subquery(outer_join_odes=True)
-    stmt = (
-        _publication_summary_select(ode_count_sq)
-        .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc())
+    stmt = _publication_summary_select(ode_count_sq).order_by(
+        func.coalesce(ode_count_sq.c.ode_count, 0).desc()
     )
     rows = client.query(stmt)
     return [_format_publication_summary(row) for row in rows]
 
 
-def search_publication_summaries(client: MiraDatabaseClient, q: str) -> list[dict]:
+def search_publication_summaries(
+    client: MiraDatabaseClient, q: str
+) -> list[dict]:
     """Search text_references by metadata and grounded_concepts JSON.
 
     Parameters
@@ -274,9 +288,7 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
         - grounded_concepts: Grounded concept metadata for the model.
     """
     pmid = str(pmid)
-    text_ref = client.query_one(
-        select(TextRef.id).where(TextRef.pmid == pmid)
-    )
+    text_ref = client.query_one(select(TextRef.id).where(TextRef.pmid == pmid))
     if not text_ref:
         return []
 
@@ -309,13 +321,17 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
             latex_lines = [row.get("corrected_ode") or row.get("ode")]
 
         method = row["extraction_method_id"]
-        results.append({
-            "id": row["id"],
-            "extraction_method": method - 1,
-            "method_label": EXTRACTION_METHOD_LABELS.get(method, f"Method {method}"),
-            "latex": latex_lines,
-            "grounded_concepts": grounded_concepts or {},
-        })
+        results.append(
+            {
+                "id": row["id"],
+                "extraction_method": method - 1,
+                "method_label": EXTRACTION_METHOD_LABELS.get(
+                    method, f"Method {method}"
+                ),
+                "latex": latex_lines,
+                "grounded_concepts": grounded_concepts or {},
+            }
+        )
 
     results.sort(key=lambda r: r["extraction_method"])
     return results
@@ -338,9 +354,7 @@ def list_odes_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
         and ``corrected_ode``.
     """
     pmid = str(pmid)
-    text_ref = client.query_one(
-        select(TextRef.id).where(TextRef.pmid == pmid)
-    )
+    text_ref = client.query_one(select(TextRef.id).where(TextRef.pmid == pmid))
     if not text_ref:
         return []
 
@@ -387,6 +401,7 @@ def add_extraction_method(
     :
         The ID of the extraction method entry that was added.
     """
+
     def _write(sess):
         row = ExtractionMethod(
             extraction_method=extraction_method,
@@ -397,6 +412,7 @@ def add_extraction_method(
         sess.refresh(row)
         logger.info("Registered extraction method '%s'.", extraction_method)
         return row.id
+
     return client.mutate(_write)
 
 
@@ -488,16 +504,24 @@ def add_text_ref(
         The ID of the paper that was added.
     """
     try:
+
         def _write(sess):
             p = TextRef(
-                pmid=pmid, pmcid=pmcid, doi=doi, authors=authors, title=title,
-                journal=journal, year=year, keywords=keywords,
+                pmid=pmid,
+                pmcid=pmcid,
+                doi=doi,
+                authors=authors,
+                title=title,
+                journal=journal,
+                year=year,
+                keywords=keywords,
             )
             sess.add(p)
             sess.flush()
             sess.refresh(p)
             logger.info("Registered paper '%s'.", pmid)
             return p.id
+
         return client.mutate(_write)
     except IntegrityError:
         logger.warning("A paper with pmid %s already exists.", pmid)
@@ -543,6 +567,7 @@ def update_text_ref(
     bool
         True if the paper was found and updated, False if the paper was not found.
     """
+
     def _write(sess):
         p = sess.query(TextRef).filter_by(pmid=pmid).first()
         if not p:
@@ -564,6 +589,7 @@ def update_text_ref(
             p.keywords = keywords
         logger.info("Updated paper '%s'.", pmid)
         return True
+
     return client.mutate(_write)
 
 
@@ -633,6 +659,7 @@ def remove_text_ref(client: MiraDatabaseClient, pmid: str) -> bool:
     :
         True if the paper was found and deleted, False if the paper was not found.
     """
+
     def _write(sess):
         p = sess.query(TextRef).filter_by(pmid=pmid).first()
         if not p:
@@ -641,6 +668,7 @@ def remove_text_ref(client: MiraDatabaseClient, pmid: str) -> bool:
         sess.delete(p)
         logger.info("Deleted paper '%s' and all linked rows.", pmid)
         return True
+
     return client.mutate(_write)
 
 
@@ -672,6 +700,7 @@ def add_text_content(
         The ID of the new text content entry that was added.
     """
     try:
+
         def _write(sess):
             row = TextContent(
                 text_ref=text_ref,
@@ -684,9 +713,12 @@ def add_text_content(
             sess.refresh(row)
             logger.info("Registered paper source '%s'.", text_ref)
             return row.id
+
         return client.mutate(_write)
     except IntegrityError:
-        logger.warning("A paper source with text_ref %s already exists.", text_ref)
+        logger.warning(
+            "A paper source with text_ref %s already exists.", text_ref
+        )
         return None
 
 
@@ -717,6 +749,7 @@ def update_text_content(
     bool
         True if the paper source was found and updated, False if the paper source was not found.
     """
+
     def _write(sess):
         p_source = sess.query(TextContent).filter_by(id=id).first()
         if not p_source:
@@ -730,6 +763,7 @@ def update_text_content(
             p_source.extracted_info_path = extracted_info_path
         logger.info("Updated paper source '%s'.", id)
         return True
+
     return client.mutate(_write)
 
 
@@ -783,7 +817,11 @@ def get_all_text_contents(client: MiraDatabaseClient) -> list[dict]:
             - updated_at
     """
     with client.session() as sess:
-        p_sources = sess.query(TextContent).order_by(TextContent.created_at.desc()).all()
+        p_sources = (
+            sess.query(TextContent)
+            .order_by(TextContent.created_at.desc())
+            .all()
+        )
         return [p.to_dict() for p in p_sources]
 
 
@@ -802,6 +840,7 @@ def remove_text_content(client: MiraDatabaseClient, text_ref: int) -> bool:
     :
         True if the paper source was found and deleted, False if the paper source was not found.
     """
+
     def _write(sess):
         rows = sess.query(TextContent).filter_by(text_ref=text_ref).all()
         if not rows:
@@ -811,6 +850,7 @@ def remove_text_content(client: MiraDatabaseClient, text_ref: int) -> bool:
             sess.delete(item)
         logger.info("Deleted paper source '%s' and all linked rows.", text_ref)
         return True
+
     return client.mutate(_write)
 
 
@@ -843,6 +883,7 @@ def add_odes(
         The ID of the ODE entry that was added.
     """
     try:
+
         def _write(sess):
             p = ODEs(
                 txt_content_ref=txt_content_ref,
@@ -853,11 +894,14 @@ def add_odes(
             sess.add(p)
             sess.flush()
             sess.refresh(p)
-            logger.info("Registered ODEs for txt_content_ref '%s'.", txt_content_ref)
+            logger.info(
+                "Registered ODEs for txt_content_ref '%s'.", txt_content_ref
+            )
             return p.id
+
         return client.mutate(_write)
     except IntegrityError as e:
-        if 'ode' in str(e.orig):
+        if "ode" in str(e.orig):
             logger.warning(
                 "ODE already exists for txt_content_ref %s, skipping.",
                 txt_content_ref,
@@ -898,10 +942,15 @@ def update_odes(
     bool
         True if the ODE entry was found and updated, False if the ODE entry was not found.
     """
+
     def _write(sess):
-        odes = sess.query(ODEs).filter_by(txt_content_ref=txt_content_ref).first()
+        odes = (
+            sess.query(ODEs).filter_by(txt_content_ref=txt_content_ref).first()
+        )
         if not odes:
-            logger.warning("ODEs for txt_content_ref '%s' not found.", txt_content_ref)
+            logger.warning(
+                "ODEs for txt_content_ref '%s' not found.", txt_content_ref
+            )
             return False
         if ode is not None:
             odes.ode = ode
@@ -911,6 +960,7 @@ def update_odes(
             odes.extraction_method_id = extraction_method_id
         logger.info("Updated ODEs for txt_content_ref '%s'.", txt_content_ref)
         return True
+
     return client.mutate(_write)
 
 
@@ -938,7 +988,9 @@ def get_odes(client: MiraDatabaseClient, txt_content_ref: int):
             - updated_at
     """
     with client.session() as sess:
-        odes = sess.query(ODEs).filter_by(txt_content_ref=txt_content_ref).first()
+        odes = (
+            sess.query(ODEs).filter_by(txt_content_ref=txt_content_ref).first()
+        )
         return odes.to_dict() if odes else None
 
 
@@ -983,14 +1035,21 @@ def remove_odes(client: MiraDatabaseClient, txt_content_ref: int) -> bool:
     :
         True if the ODE entry was found and deleted, False if the ODE entry was not found.
     """
+
     def _write(sess):
         p = sess.query(ODEs).filter_by(txt_content_ref=txt_content_ref).first()
         if not p:
-            logger.warning("ODEs for txt_content_ref '%s' not found.", txt_content_ref)
+            logger.warning(
+                "ODEs for txt_content_ref '%s' not found.", txt_content_ref
+            )
             return False
         sess.delete(p)
-        logger.info("Deleted ODEs for txt_content_ref '%s' and all linked rows.", txt_content_ref)
+        logger.info(
+            "Deleted ODEs for txt_content_ref '%s' and all linked rows.",
+            txt_content_ref,
+        )
         return True
+
     return client.mutate(_write)
 
 
@@ -1020,6 +1079,7 @@ def add_tm(
         The ID of the template model entry that was added.
     """
     try:
+
         def _write(sess):
             p = MiraModel(
                 ode_ref=ode_ref,
@@ -1031,6 +1091,7 @@ def add_tm(
             sess.refresh(p)
             logger.info("Registered MiraModel for ode_ref '%s'.", ode_ref)
             return p.id
+
         return client.mutate(_write)
     except IntegrityError:
         logger.warning("A MiraModel with ode_ref %s already exists.", ode_ref)
@@ -1064,6 +1125,7 @@ def update_tm(
         True if the template model entry was found and updated, False if the
         template model entry was not found.
     """
+
     def _write(sess):
         tm = sess.query(MiraModel).filter_by(ode_ref=ode_ref).first()
         if not tm:
@@ -1075,6 +1137,7 @@ def update_tm(
             tm.mira_template_model = mira_template_model
         logger.info("Updated MiraModel for ode_ref '%s'.", ode_ref)
         return True
+
     return client.mutate(_write)
 
 
@@ -1140,18 +1203,24 @@ def remove_tm(client: MiraDatabaseClient, ode_ref: int) -> bool:
     :
         True if the MIRA template model was deleted, False if not found.
     """
+
     def _write(sess):
         p = sess.query(MiraModel).filter_by(ode_ref=ode_ref).first()
         if not p:
             logger.warning("MiraModel for ode_ref '%s' not found.", ode_ref)
             return False
         sess.delete(p)
-        logger.info("Deleted MiraModel for ode_ref '%s' and all linked rows.", ode_ref)
+        logger.info(
+            "Deleted MiraModel for ode_ref '%s' and all linked rows.", ode_ref
+        )
         return True
+
     return client.mutate(_write)
 
 
-def get_template_model_by_ode_id(client: MiraDatabaseClient, ode_id: int) -> TemplateModel | None:
+def get_template_model_by_ode_id(
+    client: MiraDatabaseClient, ode_id: int
+) -> TemplateModel | None:
     """Look up the mira_template_models row whose ode_ref == ode_id and
     deserialize it into a TemplateModel.  Returns None if not found.
 
@@ -1168,9 +1237,9 @@ def get_template_model_by_ode_id(client: MiraDatabaseClient, ode_id: int) -> Tem
         A TemplateModel if found, otherwise None.
     """
     row = client.query_one(
-        select(MiraModel.mira_template_model, MiraModel.grounded_concepts).where(
-            MiraModel.ode_ref == ode_id
-        )
+        select(
+            MiraModel.mira_template_model, MiraModel.grounded_concepts
+        ).where(MiraModel.ode_ref == ode_id)
     )
 
     if not row or not row.get("mira_template_model"):
@@ -1183,7 +1252,7 @@ def get_template_model_by_ode_id(client: MiraDatabaseClient, ode_id: int) -> Tem
         raw = json.loads(raw)
 
     loaded_model = TemplateModel.from_json(raw)
-    loaded_model.time = Time(name='t', units=None)
+    loaded_model.time = Time(name="t", units=None)
 
     return loaded_model
 
@@ -1203,7 +1272,9 @@ def sanitize_tm_for_sbml(tm: TemplateModel) -> TemplateModel:
     """
     sanitized_tm = copy.deepcopy(tm)
     for param in sanitized_tm.parameters.values():
-        if param.value is None or (isinstance(param.value, float) and math.isnan(param.value)):
+        if param.value is None or (
+            isinstance(param.value, float) and math.isnan(param.value)
+        ):
             param.value = 0.0
         elif not isinstance(param.value, (int, float)):
             try:

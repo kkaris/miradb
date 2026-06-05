@@ -20,6 +20,7 @@ class MiraDatabaseSessionManager(object):
     engine : Engine
         The engine of the database.
     """
+
     def __init__(self, engine):
         logger.debug(f"Grabbing a session to {engine.url}...")
         DBSession = sessionmaker(bind=engine)
@@ -54,10 +55,11 @@ class MiraDatabaseClient:
     label : str, optional
         The label of the database e.g., "primary".
     """
-    def __init__(self, url: str, *, label: str | None = None):
+
+    def __init__(self, url: str, *, label: str | None = None, engine=None):
         self.url = url
         self.label = label
-        self.engine = create_engine(url)
+        self.engine = engine or create_engine(url)
         self.table_mapping = {
             tbl.__tablename__: tbl for tbl in EpiTable.__subclasses__()
         }
@@ -98,19 +100,25 @@ class MiraDatabaseClient:
             tables = set(self.table_mapping.keys())
         else:
             tables = {
-                tbl.__tablename__ if isinstance(tbl, EpiTable) else tbl for tbl in tables
+                tbl.__tablename__ if isinstance(tbl, EpiTable) else tbl
+                for tbl in tables
             }
 
         for tbl_name in TABLE_ORDER:
             if tbl_name in tables:
                 logger.info(f"Creating {tbl_name} table")
                 inspector = inspect(self.engine)
-                if not inspector.has_table(self.table_mapping[tbl_name].__tablename__):
-                    self.table_mapping[tbl_name].__table__.create(bind=self.engine)
+                if not inspector.has_table(
+                    self.table_mapping[tbl_name].__tablename__
+                ):
+                    self.table_mapping[tbl_name].__table__.create(
+                        bind=self.engine
+                    )
                     logger.debug("Table created!")
                 else:
-                    logger.warning(f"Table {tbl_name} already exists! "
-                                   f"No action taken.")
+                    logger.warning(
+                        f"Table {tbl_name} already exists! " f"No action taken."
+                    )
         return
 
     def drop_tables(self, tables=None, force=False):
@@ -122,23 +130,29 @@ class MiraDatabaseClient:
         """
         # Regularize the type of input to table objects.
         if tables is not None:
-            tables = [tbl if isinstance(tbl, EpiTable) else self.table_mapping[tbl]
-                      for tbl in tables]
+            tables = [
+                tbl if isinstance(tbl, EpiTable) else self.table_mapping[tbl]
+                for tbl in tables
+            ]
 
         if not force:
             if tables is None:
-                msg = ("Do you really want to clear the %s database? [y/N]: "
-                       % self.label)
+                msg = (
+                    "Do you really want to clear the %s database? [y/N]: "
+                    % self.label
+                )
             else:
                 msg = "You are going to clear the following tables:\n"
-                msg += '\n'.join(['\t-' + tbl.__tablename__ for tbl in tables])
-                msg += '\n'
-                msg += ("Do you really want to clear these tables from %s? "
-                        "[y/N]: " % self.label)
+                msg += "\n".join(["\t-" + tbl.__tablename__ for tbl in tables])
+                msg += "\n"
+                msg += (
+                    "Do you really want to clear these tables from %s? "
+                    "[y/N]: " % self.label
+                )
 
             resp = input(msg)
-            if resp != 'y' and resp != 'yes':
-                logger.info('Aborting drop.')
+            if resp != "y" and resp != "yes":
+                logger.info("Aborting drop.")
                 return False
 
         if tables is None:
@@ -164,4 +178,10 @@ def get_client(name: str = "primary") -> MiraDatabaseClient:
     return MiraDatabaseClient(url, label=name)
 
 
-TABLE_ORDER = [ 'text_references', 'extraction_method', 'text_contents', 'ode_expressions', 'mira_template_models']
+TABLE_ORDER = [
+    "text_references",
+    "extraction_method",
+    "text_contents",
+    "ode_expressions",
+    "mira_template_models",
+]
