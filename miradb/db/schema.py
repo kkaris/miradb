@@ -23,6 +23,7 @@ class EpiTable:
     to auto-discover tables via mapper registry.
     """
 
+
 class TextRef(Base, EpiTable):
     __tablename__ = 'text_references'
 
@@ -43,7 +44,7 @@ class TextRef(Base, EpiTable):
 
     def __repr__(self):
         return f"<TextRef(id='{self.id}', pmid='{self.pmid}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -54,16 +55,16 @@ class TextRef(Base, EpiTable):
             'title': self.title,
             'journal': self.journal,
             'year': self.year,
-            'keywords': self.keywords, 
+            'keywords': self.keywords,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
-    
+
 
 class ExtractionMethod(Base, EpiTable):
     __tablename__ = 'extraction_method'
 
-    id = Column(Integer, primary_key=True) 
+    id = Column(Integer, primary_key=True)
     extraction_method = Column(String, nullable=False) # {"mineru_image", "mineru_text", "marker"}
     extraction_method_desc = Column(String, nullable=True)
 
@@ -72,7 +73,7 @@ class ExtractionMethod(Base, EpiTable):
 
     def __repr__(self):
         return f"<ExtractionMethod(id='{self.id}', extraction_method='{self.extraction_method}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -84,7 +85,7 @@ class ExtractionMethod(Base, EpiTable):
 class TextContent(Base, EpiTable):
     __tablename__ = 'text_contents'
 
-    id = Column(Integer, primary_key=True) 
+    id = Column(Integer, primary_key=True)
     text_ref = Column(Integer, ForeignKey('text_references.id', ondelete="CASCADE"), nullable=False)
     folder_path = Column(String, nullable=False)
     extraction_method_id = Column(Integer, ForeignKey('extraction_method.id'), nullable=False)
@@ -104,7 +105,7 @@ class TextContent(Base, EpiTable):
 
     def __repr__(self):
         return f"<TextContent(id='{self.id}', text_ref='{self.text_ref}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -144,7 +145,7 @@ class ODEs(Base, EpiTable):
 
     def __repr__(self):
         return f"<ODEs(id='{self.id}', ode='{self.ode}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -172,11 +173,11 @@ class MiraModel(Base, EpiTable):
 
     def __repr__(self):
         return f"<MiraModel(id='{self.id}', template_model='{self.mira_template_model}')>"
-    
+
     __table_args__ = (
     UniqueConstraint('ode_ref', name='uq_ode_ref'),
 )
-    
+
     def to_dict(self):
         return {
             'id': self.id,
