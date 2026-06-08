@@ -1,7 +1,5 @@
 import json
 import logging
-import math
-import copy
 
 from sqlalchemy import Text, cast, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -1255,30 +1253,3 @@ def get_template_model_by_ode_id(
     loaded_model.time = Time(name="t", units=None)
 
     return loaded_model
-
-
-def sanitize_tm_for_sbml(tm: TemplateModel) -> TemplateModel:
-    """Replace None/non-numeric parameter values with 0.0 for SBML export.
-
-    Parameters
-    ----------
-    tm :
-        The template model to sanitize.
-
-    Returns
-    -------
-    :
-        The sanitized template model.
-    """
-    sanitized_tm = copy.deepcopy(tm)
-    for param in sanitized_tm.parameters.values():
-        if param.value is None or (
-            isinstance(param.value, float) and math.isnan(param.value)
-        ):
-            param.value = 0.0
-        elif not isinstance(param.value, (int, float)):
-            try:
-                param.value = float(param.value)
-            except (TypeError, ValueError):
-                param.value = 0.0
-    return sanitized_tm

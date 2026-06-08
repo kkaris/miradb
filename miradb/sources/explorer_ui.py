@@ -1,4 +1,5 @@
 import logging
+import math
 
 from flask import Blueprint, jsonify, render_template, request, send_file, abort
 import json
@@ -113,8 +114,18 @@ def download_sbml(ode_id: int):
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
     try:
-        tm_clean = queries.sanitize_tm_for_sbml(tm)
-        sbml_str = template_model_to_sbml_string(tm_clean)
+        # SBML does not allow empty/nan parameter values
+        for param in tm.parameters.values():
+            if param.value is None or (
+                isinstance(param.value, float) and math.isnan(param.value)
+            ):
+                param.value = 0.0
+            elif not isinstance(param.value, (int, float)):
+                try:
+                    param.value = float(param.value)
+                except (TypeError, ValueError):
+                    param.value = 0.0
+        sbml_str = template_model_to_sbml_string(tm)
     except Exception as e:
         logger.error(f"SBML export failed for ode id {ode_id}")
         logger.exception(e)
