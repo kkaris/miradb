@@ -533,11 +533,11 @@ def update_text_ref(
     pmid: str,
     pmcid: str = None,
     doi: str = None,
-    authors: str = None,
+    authors: list[str] = None,
     title: str = None,
     journal: str = None,
     year: int = None,
-    keywords: list = None,
+    keywords: list[str] = None,
 ) -> bool:
     """Update a paper's identifiers in the database.
 
