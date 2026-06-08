@@ -1,9 +1,10 @@
 import logging
-from sqlalchemy.orm import sessionmaker
+
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker
+
 from miradb.db.config import get_databases
 from miradb.db.schema import Base, EpiTable
-
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +18,15 @@ class MiraDatabaseSessionManager(object):
 
     Parameters
     ----------
-    engine : Engine
+    engine : sqlalchemy.engine.Engine
         The engine of the database.
     """
 
     def __init__(self, engine):
         logger.debug(f"Grabbing a session to {engine.url}...")
-        DBSession = sessionmaker(bind=engine)
+        db_session = sessionmaker(bind=engine)
         logger.debug("Session grabbed.")
-        self.session = DBSession()
+        self.session = db_session()
         if self.session is None:
             raise MiraDatabaseError("Could not acquire session.")
 
@@ -46,14 +47,16 @@ class MiraDatabaseSessionManager(object):
 
 
 class MiraDatabaseClient:
-    """Database client
+    """Database client to connect to the MIRA Database.
 
     Parameters
     ----------
-    url : str
+    url :
         The URL of the database.
-    label : str, optional
+    label :
         The label of the database e.g., "primary".
+    engine : sqlalchemy.engine.Engine, optional
+        The engine of the database.
     """
 
     def __init__(self, url: str, *, label: str | None = None, engine=None):
@@ -64,26 +67,83 @@ class MiraDatabaseClient:
             tbl.__tablename__: tbl for tbl in EpiTable.__subclasses__()
         }
 
-    def session(self):
+    def session(self) -> MiraDatabaseSessionManager:
+        """Returns a database session context manager
+
+        Returns
+        -------
+        :
+            A MiraDatabaseSessionManager instance for managing database sessions
+        """
         return MiraDatabaseSessionManager(self.engine)
 
-    def query(self, statement, params=None):
-        """Execute a SELECT statement and return all rows as mappings."""
+    def query(self, statement, params: dict | None = None):
+        """Execute a SELECT statement and return all rows as mappings
+
+        Parameters
+        ----------
+        statement : sqlalchemy.sql.Select
+            The SQL statement to execute.
+        params :
+            The parameters to pass to the SQL statement. Default: None.
+
+        Returns
+        -------
+        : list[dict]
+            A list of mappings representing the rows returned by the query
+        """
         with self.session() as sess:
             return sess.execute(statement, params).mappings().all()
 
-    def query_one(self, statement, params=None):
-        """Execute a SELECT statement and return the first row as a mapping."""
+    def query_one(self, statement, params: dict | None = None):
+        """Execute a SELECT statement and return the first row as a mapping
+
+        Parameters
+        ----------
+        statement : sqlalchemy.sql.Select
+            The SQL statement to execute.
+        params :
+            The parameters to pass to the SQL statement. Default: None.
+
+        Returns
+        -------
+        : dict
+            A mapping representing the first row returned by the query, or None
+            if no rows were returned.
+        """
         with self.session() as sess:
             return sess.execute(statement, params).mappings().first()
 
     def mutate(self, fn):
-        """Run a function that modifies the database and commit on success."""
+        """Run a function that modifies the database and commit on success
+
+        Parameters
+        ----------
+        fn : Callable
+            A function that takes a SQLAlchemy session as input and performs
+            database modifications. The session will be committed if the
+            function executes successfully, or rolled back if an exception is
+            raised.
+        """
         with self.session() as sess:
-            return fn(sess)  # session manager already commits
+            return fn(sess)
 
     def query_sql(self, sql: str, params: dict | None = None):
-        """Execute a SQL statement and return all rows as mappings."""
+        """Execute a SQL statement and return all rows as mappings
+
+        Parameters
+        ----------
+        sql :
+            The SQL statement to execute.
+        params :
+            The parameters to pass to the SQL statement. Default: None.
+
+        Returns
+        -------
+        : list[dict]
+            A list of mappings representing the rows returned by the query, or
+            None if no rows were returned.
+        """
         with self.session() as sess:
             return sess.execute(text(sql), params or {}).mappings().all()
 
@@ -121,12 +181,23 @@ class MiraDatabaseClient:
                     )
         return
 
-    def drop_tables(self, tables=None, force=False):
+    def drop_tables(
+        self, tables: list[EpiTable | str] = None, force: bool = False
+    ) -> bool:
         """Drop the tables from the MIRA-DB database given in `tables`.
 
-        If `tables` is None, all tables will be dropped. Note that if `force`
-        is False, a warning prompt will be raised to asking for confirmation,
-        as this action will remove all data from that table.
+        Parameters
+        ----------
+        tables :
+            A list of tables to drop. If None (default), all tables will be
+            dropped. Default: None.
+        force :
+            If True, skip the confirmation prompt.
+
+        Returns
+        -------
+        :
+            True if the tables were dropped, False if the operation was aborted.
         """
         # Regularize the type of input to table objects.
         if tables is not None:
@@ -174,6 +245,18 @@ class MiraDatabaseClient:
 
 
 def get_client(name: str = "primary") -> MiraDatabaseClient:
+    """Get a MiraDatabaseClient instance for the database with the given name
+
+    Parameters
+    ----------
+    name :
+        The name of the database to connect to. Default: "primary".
+
+    Returns
+    -------
+    :
+        A MiraDatabaseClient instance connected to the specified database.
+    """
     url, _ = get_databases()[name]
     return MiraDatabaseClient(url, label=name)
 
