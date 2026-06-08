@@ -1,4 +1,5 @@
 import logging
+import re
 import math
 
 from flask import Blueprint, jsonify, render_template, request, send_file, abort
@@ -8,7 +9,6 @@ from miradb.db.client import get_client
 from miradb.db import queries
 from mira.modeling import Model
 from mira.modeling.ode import OdeModel
-from mira.metamodel import TemplateModel
 from mira.metamodel.template_model import Time
 from mira.modeling.sbml import template_model_to_sbml_string
 
@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 explorer_blueprint = Blueprint("explorer", __name__, url_prefix="/explorer")
 explorer_blueprint.template_folder = "templates"
 
-client = get_client('primary')
+client = get_client("primary")
+symbol_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
+
 
 @explorer_blueprint.route("/")
 def index():
@@ -28,19 +30,26 @@ def index():
 
 @explorer_blueprint.route("/api/search")
 def search_pmids():
-    """
-    Server-side search across text_references metadata and grounded_concepts JSON.
-    Returns empty list if no query is provided.
-
-    Query param: q (string)
+    """Search across text_references metadata and grounded_concepts JSON.
 
     Searches:
-      - text_references: pmid, title, author_list (cast to text), pub_year (cast to text)
-      - mira_template_models.grounded_concepts JSON (cast to text, ILIKE match)
-        covers variable names, ontology IDs, context keys and values
+      - text_references: pmid, title, author_list, pub_year
+      - mira_template_models.grounded_concepts JSON. Covers variable names,
+        ontology IDs, context keys and values
 
-    Response shape: same as /api/pmids
-    [{"pmid": "...", "title": "...", "author_list": "...", "pub_year": ..., "model_count": N}]
+    Response format:
+    [
+        {
+            "pmid": "...",
+            "title": "...",
+            "author_list": "...",
+            "pub_year": ...,
+            "model_count": N
+        },
+        ...
+    ]
+
+    Returns empty list if no query is provided.
     """
     q = request.args.get("q", "").strip()
     if not q:
@@ -50,18 +59,18 @@ def search_pmids():
 
 @explorer_blueprint.route("/api/pmids")
 def get_all_pmids():
-    """Return every text_reference with a count of its associated ode_expressions.
+    """Return all text_references and its associated count of ode_expressions
 
-    Response shape (list):
+    Response format:
     [
-      {
-        "pmid":       "33451107",
-        "title":      "A SEIR model …",
-        "author_list": "Zhang et al.",
-        "pub_year":   2021,
-        "model_count": 3
-      },
-      …
+        {
+            "pmid": "33451107",
+            "title": "An SEIR model of influenza",
+            "author_list": "Zhang et al.",
+            "pub_year":   2021,
+            "model_count": 3
+        },
+        ...
     ]
     """
     rows = queries.list_publication_summaries(client)
@@ -70,19 +79,18 @@ def get_all_pmids():
 
 @explorer_blueprint.route("/api/pmids/<pmid>/models")
 def get_models_for_pmid(pmid: str):
-    """
-    Returns all ode_expressions for a given PMID, with LaTeX-rendered equations.
+    """Return all ode_expressions for a PMID, with LaTeX-rendered equations.
 
-    Response shape (list):
+    Response format:
     [
-      {
-        "id":                1,
-        "extraction_method_id": 0,
-        "method_label":      "Multi-Agent Pipeline",
-        "latex":             ["\\frac{dS}{dt} = …", …]
-        "grounded_concepts": {}
-      },
-      …
+        {
+            "id": 1,
+            "extraction_method_id": 0,
+            "method_label": "Multi-Agent Pipeline",
+            "latex": ["\\frac{dS}{dt} = ...", ...]
+            "grounded_concepts": {}
+        },
+      ...
     ]
     """
     results = queries.list_models_for_pmid(client, pmid)
@@ -91,7 +99,7 @@ def get_models_for_pmid(pmid: str):
 
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/json")
 def download_json(ode_id: int):
-    """Export the MIRA TemplateModel as JSON."""
+    """Export the given model as a MIRA TemplateModel JSON"""
     tm = queries.get_template_model_by_ode_id(client, ode_id)
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")
@@ -108,7 +116,7 @@ def download_json(ode_id: int):
 
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sbml")
 def download_sbml(ode_id: int):
-    """Export the model as SBML via MIRA."""
+    """Export the given model as SBML"""
     tm = queries.get_template_model_by_ode_id(client, ode_id)
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")
@@ -141,19 +149,7 @@ def download_sbml(ode_id: int):
 
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sympy")
 def download_sympy(ode_id: int):
-    """
-    Export ODEs as a SymPy .py file derived from a MIRA TemplateModel.
-
-    Parameters
-    ----------
-    ode_id : int
-        Identifier of the ODE model to export.
-
-    Returns
-    -------
-    flask.Response
-        Downloadable SymPy .py file for the ODE model.
-    """
+    """Export ODEs as a SymPy .py file"""
     tm = queries.get_template_model_by_ode_id(client, ode_id)
 
     if tm is None:
@@ -181,8 +177,8 @@ def download_sympy(ode_id: int):
             ode_pairs.append((str(kinetics), ""))
 
     except Exception:
-        logger.exception("SymPy export failed for ode_id=%s", ode_id)
-        abort(500, description="SymPy ODE export failed — see server logs.")
+        logger.exception(f"SymPy export failed for ode_id={ode_id}")
+        abort(500, description="SymPy ODE export failed - see server logs.")
 
     lines = [
         "from sympy import *",
@@ -191,8 +187,6 @@ def download_sympy(ode_id: int):
 
     # Declare all symbols that appear across lhs + rhs
     all_symbols: set[str] = set()
-    import re
-    symbol_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
     skip = {"Derivative", "Function", "Symbol", "symbols", "t"}
     for lhs, rhs in ode_pairs:
         for token in symbol_re.findall(lhs + " " + rhs):
@@ -201,7 +195,9 @@ def download_sympy(ode_id: int):
 
     if all_symbols:
         lines.append("# Declare symbols")
-        lines.append(f"{', '.join(sorted(all_symbols))} = symbols('{' '.join(sorted(all_symbols))}')")
+        lines.append(
+            f"{', '.join(sorted(all_symbols))} = symbols('{' '.join(sorted(all_symbols))}')"
+        )
         lines.append("")
 
     for lhs, rhs in ode_pairs:
@@ -227,4 +223,3 @@ def download_sympy(ode_id: int):
         as_attachment=True,
         download_name=f"model_{ode_id}.py",
     )
-
