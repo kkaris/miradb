@@ -92,7 +92,7 @@ def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
         return latex_lines, raw_gc
 
     except Exception:
-        logger.exception("Failed to render LaTeX for ode id=%s", ode_id)
+        logger.exception(f"Failed to render LaTeX for ode id={ode_id}")
         return [], []
 
 
@@ -235,14 +235,14 @@ def search_publication_summaries(
     client :
         An instance of MiraDatabaseClient.
     q :
-        Search string (non-empty; callers should validate).
+        Search string. Matches against pmid, title, authors, year,
+        and grounded_concepts (variable names, ontology IDs, context keys and
+        values).
 
     Returns
     -------
     :
-        A list of publication summary dicts. Matches against pmid, title,
-        authors, year, and grounded_concepts (variable names, ontology IDs,
-        context keys and values).
+        A list of publication summaries as dicts.
     """
     pattern = f"%{q.lower()}%"
     ode_count_sq = _ode_count_subquery(outer_join_odes=False)
@@ -340,14 +340,14 @@ def list_odes_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
 
     Parameters
     ----------
-    client
+    client :
         Database client.
-    pmid
+    pmid :
         PubMed ID of the publication.
 
     Returns
     -------
-    list of dict
+    :
         Each dict has keys ``id``, ``extraction_method_id``, ``ode``,
         and ``corrected_ode``.
     """
@@ -381,7 +381,7 @@ def add_extraction_method(
     client: MiraDatabaseClient,
     extraction_method: str,
     extraction_method_desc: str = None,
-):
+) -> int:
     """Add an extraction method to the registry.
 
     Parameters
@@ -408,7 +408,7 @@ def add_extraction_method(
         sess.add(row)
         sess.flush()
         sess.refresh(row)
-        logger.info("Registered extraction method '%s'.", extraction_method)
+        logger.info(f"Registered extraction method '{extraction_method}'.")
         return row.id
 
     return client.mutate(_write)
@@ -465,14 +465,14 @@ def get_all_extraction_methods(client: MiraDatabaseClient) -> list[dict]:
 def add_text_ref(
     client: MiraDatabaseClient,
     pmid: str,
-    pmcid: str = None,
-    doi: str = None,
-    authors: str = None,
-    title: str = None,
-    journal: str = None,
-    year: int = None,
-    keywords: list = None,
-):
+    pmcid: str | None = None,
+    doi: str | None = None,
+    authors: str | None = None,
+    title: str | None = None,
+    journal: str | None = None,
+    year: int | None = None,
+    keywords: list | None = None,
+) -> int:
     """Add a paper to the database, returning the new paper's ID.
 
     Parameters
@@ -485,20 +485,20 @@ def add_text_ref(
         The PubMed Central ID of the paper.
     doi :
         The DOI of the paper.
-    authors : str, optional
+    authors :
         The authors of the paper.
-    title : str, optional
+    title :
         The title of the paper.
-    journal : str, optional
+    journal :
         The journal of the paper.
-    year : int, optional
+    year :
         The publication year of the paper.
-    keywords : list, optional
+    keywords :
         A list of keywords associated with the paper.
 
     Returns
     -------
-    int
+    :
         The ID of the paper that was added.
     """
     try:
@@ -517,12 +517,12 @@ def add_text_ref(
             sess.add(p)
             sess.flush()
             sess.refresh(p)
-            logger.info("Registered paper '%s'.", pmid)
+            logger.info(f"Registered paper '{pmid}'.")
             return p.id
 
         return client.mutate(_write)
     except IntegrityError:
-        logger.warning("A paper with pmid %s already exists.", pmid)
+        logger.warning(f"A paper with pmid {pmid} already exists.")
         return None
 
 
@@ -562,14 +562,15 @@ def update_text_ref(
 
     Returns
     -------
-    bool
-        True if the paper was found and updated, False if the paper was not found.
+    :
+        True if the paper was found and updated, False if the paper was not
+        found.
     """
 
     def _write(sess):
         p = sess.query(TextRef).filter_by(pmid=pmid).first()
         if not p:
-            logger.warning("Paper '%s' not found.", pmid)
+            logger.warning(f"Paper '{pmid}' not found.")
             return False
         if pmcid is not None:
             p.pmcid = pmcid
@@ -585,7 +586,7 @@ def update_text_ref(
             p.year = year
         if keywords is not None:
             p.keywords = keywords
-        logger.info("Updated paper '%s'.", pmid)
+        logger.info(f"Updated paper '{pmid}'.")
         return True
 
     return client.mutate(_write)
@@ -604,8 +605,20 @@ def get_text_ref(client: MiraDatabaseClient, pmid: str) -> dict | None:
     Returns
     -------
     :
-        A dictionary containing the paper's information if found, or None if not found.
-        Dictionary keys: 'id', 'pmid', 'doi', 'pmcid', 'created_at', 'updated_at', 'authors', 'title', 'journal', 'year', 'keywords'
+        A dictionary containing the paper's information if found, or None if
+        not found.
+        The dictionary keys are:
+            - id
+            - pmid
+            - doi
+            - pmcid
+            - created_at
+            - updated_at
+            - authors
+            - title
+            - journal
+            - year
+            - keywords
     """
     with client.session() as sess:
         paper = sess.query(TextRef).filter_by(pmid=pmid).first()
@@ -649,22 +662,23 @@ def remove_text_ref(client: MiraDatabaseClient, pmid: str) -> bool:
     ----------
     client :
         The database client to use.
-    pmid : str
+    pmid :
         The PubMed ID of the paper to delete.
 
     Returns
     -------
     :
-        True if the paper was found and deleted, False if the paper was not found.
+        True if the paper was found and deleted, False if the paper was not
+        found.
     """
 
     def _write(sess):
         p = sess.query(TextRef).filter_by(pmid=pmid).first()
         if not p:
-            logger.warning("Paper '%s' not found.", pmid)
+            logger.warning(f"Paper '{pmid}' not found.")
             return False
         sess.delete(p)
-        logger.info("Deleted paper '%s' and all linked rows.", pmid)
+        logger.info(f"Deleted paper '{pmid}' and all linked rows.")
         return True
 
     return client.mutate(_write)
@@ -676,7 +690,7 @@ def add_text_content(
     folder_path: str,
     extraction_method_id: int,
     extracted_info_path: str,
-):
+) -> int | None:
     """Add a paper's source locations to the database
 
     Parameters
@@ -686,16 +700,19 @@ def add_text_content(
     text_ref :
         The ID of the text reference that this source information is linked to.
     folder_path :
-        The relative file path to the folder containing the paper's source files (e.g., PDFs, images).
+        The relative file path to the folder containing the paper's source files
+        (e.g., PDFs, images).
     extraction_method_id :
-        The ID of the extraction method used to extract the ODE string e.g., 0 for MinerU image extraction.
+        The ID of the extraction method used to extract the ODE string e.g., 0
+        for MinerU image extraction.
     extracted_info_path :
         The relative file path to the extracted information for the paper.
 
     Returns
     -------
     :
-        The ID of the new text content entry that was added.
+        The ID of the new text content entry that was added, or None if an entry
+        for the given text_ref already exists.
     """
     try:
 
@@ -709,23 +726,23 @@ def add_text_content(
             sess.add(row)
             sess.flush()
             sess.refresh(row)
-            logger.info("Registered paper source '%s'.", text_ref)
+            logger.info(f"Registered paper source '{text_ref}'.")
             return row.id
 
         return client.mutate(_write)
     except IntegrityError:
         logger.warning(
-            "A paper source with text_ref %s already exists.", text_ref
+            f"A paper source with text_ref '{text_ref}' already exists."
         )
         return None
 
 
 def update_text_content(
     client: MiraDatabaseClient,
-    id: int,
-    folder_path: str = None,
-    extraction_method_id: int = None,
-    extracted_info_path: str = None,
+    text_content_id: int,
+    folder_path: str | None = None,
+    extraction_method_id: int | None = None,
+    extracted_info_path: str | None = None,
 ) -> bool:
     """Update a paper source's information in the database.
 
@@ -733,10 +750,11 @@ def update_text_content(
     ----------
     client :
         The database client to use.
-    id :
+    text_content_id :
         The ID of the text content entry to update.
     folder_path :
-        The relative file path to the folder containing the paper's source files (e.g., PDFs, images).
+        The relative file path to the folder containing the paper's source
+        files (e.g., PDFs, images).
     extraction_method_id :
         The ID of the extraction method used to extract the ODE string.
     extracted_info_path :
@@ -744,14 +762,15 @@ def update_text_content(
 
     Returns
     -------
-    bool
-        True if the paper source was found and updated, False if the paper source was not found.
+    :
+        True if the paper source was found and updated, False if the paper
+        source was not found.
     """
 
     def _write(sess):
-        p_source = sess.query(TextContent).filter_by(id=id).first()
+        p_source = sess.query(TextContent).filter_by(id=text_content_id).first()
         if not p_source:
-            logger.warning("Paper source '%s' not found.", id)
+            logger.warning(f"Paper source '{text_content_id}' not found.")
             return False
         if folder_path is not None:
             p_source.folder_path = folder_path
@@ -759,13 +778,13 @@ def update_text_content(
             p_source.extraction_method_id = extraction_method_id
         if extracted_info_path is not None:
             p_source.extracted_info_path = extracted_info_path
-        logger.info("Updated paper source '%s'.", id)
+        logger.info(f"Updated paper source '{text_content_id}'.")
         return True
 
     return client.mutate(_write)
 
 
-def get_text_content(client: MiraDatabaseClient, text_ref: int):
+def get_text_content(client: MiraDatabaseClient, text_ref: int) -> list[dict] | None:
     """Retrieve a paper's source information by text reference ID.
 
     Parameters
@@ -836,17 +855,18 @@ def remove_text_content(client: MiraDatabaseClient, text_ref: int) -> bool:
     Returns
     -------
     :
-        True if the paper source was found and deleted, False if the paper source was not found.
+        True if the paper source was found and deleted, False if the paper
+        source was not found.
     """
 
     def _write(sess):
         rows = sess.query(TextContent).filter_by(text_ref=text_ref).all()
         if not rows:
-            logger.warning("Paper source '%s' not found.", text_ref)
+            logger.warning(f"Paper source '{text_ref}' not found.")
             return False
         for item in rows:
             sess.delete(item)
-        logger.info("Deleted paper source '%s' and all linked rows.", text_ref)
+        logger.info(f"Deleted paper source '{text_ref}' and all linked rows.")
         return True
 
     return client.mutate(_write)
@@ -858,7 +878,7 @@ def add_odes(
     extraction_method_id: int,
     ode: str,
     corrected_ode: str = None,
-):
+) -> int | None:
     """Add a paper's ODE equations to the database.
 
     Parameters
@@ -877,7 +897,7 @@ def add_odes(
 
     Returns
     -------
-    int
+    :
         The ID of the ODE entry that was added.
     """
     try:
@@ -893,7 +913,7 @@ def add_odes(
             sess.flush()
             sess.refresh(p)
             logger.info(
-                "Registered ODEs for txt_content_ref '%s'.", txt_content_ref
+                f"Registered ODEs for txt_content_ref '{txt_content_ref}'."
             )
             return p.id
 
@@ -901,13 +921,13 @@ def add_odes(
     except IntegrityError as e:
         if "ode" in str(e.orig):
             logger.warning(
-                "ODE already exists for txt_content_ref %s, skipping.",
-                txt_content_ref,
+                f"ODE already exists for txt_content_ref {txt_content_ref},"
+                f"skipping."
             )
         else:
             logger.warning(
-                "An ODE entry for txt_content_ref %s already exists.",
-                txt_content_ref,
+                f"An ODE entry for txt_content_ref {txt_content_ref} already"
+                f"exists."
             )
         return None
 
@@ -937,8 +957,9 @@ def update_odes(
 
     Returns
     -------
-    bool
-        True if the ODE entry was found and updated, False if the ODE entry was not found.
+    :
+        True if the ODE entry was found and updated, False if the ODE entry was
+        not found.
     """
 
     def _write(sess):
@@ -947,7 +968,7 @@ def update_odes(
         )
         if not odes:
             logger.warning(
-                "ODEs for txt_content_ref '%s' not found.", txt_content_ref
+                f"ODEs for txt_content_ref '{txt_content_ref}' not found."
             )
             return False
         if ode is not None:
@@ -956,13 +977,13 @@ def update_odes(
             odes.corrected_ode = corrected_ode
         if extraction_method_id is not None:
             odes.extraction_method_id = extraction_method_id
-        logger.info("Updated ODEs for txt_content_ref '%s'.", txt_content_ref)
+        logger.info(f"Updated ODEs for txt_content_ref '{txt_content_ref}'.")
         return True
 
     return client.mutate(_write)
 
 
-def get_odes(client: MiraDatabaseClient, txt_content_ref: int):
+def get_odes(client: MiraDatabaseClient, txt_content_ref: int) -> dict | None:
     """Retrieve a paper's ODE equations by text content ID.
 
     Parameters
@@ -975,8 +996,8 @@ def get_odes(client: MiraDatabaseClient, txt_content_ref: int):
     Returns
     -------
     :
-        A dictionary containing the ODE information if found, or None if not found.
-        The dictionary keys are:
+        A dictionary containing the ODE information if found, or None if not
+        found. The dictionary keys are:
             - id
             - txt_content_ref
             - ode
@@ -1031,20 +1052,21 @@ def remove_odes(client: MiraDatabaseClient, txt_content_ref: int) -> bool:
     Returns
     -------
     :
-        True if the ODE entry was found and deleted, False if the ODE entry was not found.
+        True if the ODE entry was found and deleted, False if the ODE entry was
+        not found.
     """
 
     def _write(sess):
         p = sess.query(ODEs).filter_by(txt_content_ref=txt_content_ref).first()
         if not p:
             logger.warning(
-                "ODEs for txt_content_ref '%s' not found.", txt_content_ref
+                f"ODEs for txt_content_ref '{txt_content_ref}' not found."
             )
             return False
         sess.delete(p)
         logger.info(
-            "Deleted ODEs for txt_content_ref '%s' and all linked rows.",
-            txt_content_ref,
+            f"Deleted ODEs for txt_content_ref '{txt_content_ref}' and all "
+            f"linked rows."
         )
         return True
 
@@ -1055,8 +1077,8 @@ def add_tm(
     client: MiraDatabaseClient,
     ode_ref: int,
     grounded_concepts: dict,
-    mira_template_model: dict = None,
-):
+    mira_template_model: dict | None = None,
+) -> int | None:
     """Add a MIRA template model extracted from a paper to the database.
 
     Parameters
@@ -1066,14 +1088,15 @@ def add_tm(
     ode_ref :
         The ID of the ODE that this template model information is linked to.
     grounded_concepts :
-        A dictionary (JSON-convertible) containing the grounded concepts extracted.
+        A dictionary (JSON-convertible) containing the grounded concepts
+        extracted.
     mira_template_model :
-        A dictionary (JSON-convertible) containing the MIRA template model extracted
-        from the paper.
+        A dictionary (JSON-convertible) containing the MIRA template model
+        extracted from the paper.
 
     Returns
     -------
-    int
+    :
         The ID of the template model entry that was added.
     """
     try:
@@ -1087,20 +1110,20 @@ def add_tm(
             sess.add(p)
             sess.flush()
             sess.refresh(p)
-            logger.info("Registered MiraModel for ode_ref '%s'.", ode_ref)
+            logger.info(f"Registered MiraModel for ode_ref '{ode_ref}'.")
             return p.id
 
         return client.mutate(_write)
     except IntegrityError:
-        logger.warning("A MiraModel with ode_ref %s already exists.", ode_ref)
+        logger.warning(f"A MiraModel with ode_ref {ode_ref} already exists.")
         return None
 
 
 def update_tm(
     client: MiraDatabaseClient,
     ode_ref: int,
-    grounded_concepts: dict = None,
-    mira_template_model: dict = None,
+    grounded_concepts: dict | None = None,
+    mira_template_model: dict | None = None,
 ) -> bool:
     """Update a MIRA template model's information in the database.
 
@@ -1111,15 +1134,15 @@ def update_tm(
     ode_ref :
         The ID of the ODE that this template model information is linked to.
     grounded_concepts :
-        A dictionary (JSON-convertible) containing the grounded concepts extracted
-        from the paper.
+        A dictionary (JSON-convertible) containing the grounded concepts
+        extracted from the paper.
     mira_template_model :
-        A dictionary (JSON-convertible) containing the MIRA template model extracted
-        from the paper.
+        A dictionary (JSON-convertible) containing the MIRA template model
+        extracted from the paper.
 
     Returns
     -------
-    bool
+    :
         True if the template model entry was found and updated, False if the
         template model entry was not found.
     """
@@ -1127,19 +1150,19 @@ def update_tm(
     def _write(sess):
         tm = sess.query(MiraModel).filter_by(ode_ref=ode_ref).first()
         if not tm:
-            logger.warning("MiraModel for ode_ref '%s' not found.", ode_ref)
+            logger.warning(f"MiraModel for ode_ref '{ode_ref}' not found.")
             return False
         if grounded_concepts is not None:
             tm.grounded_concepts = grounded_concepts
         if mira_template_model is not None:
             tm.mira_template_model = mira_template_model
-        logger.info("Updated MiraModel for ode_ref '%s'.", ode_ref)
+        logger.info(f"Updated MiraModel for ode_ref '{ode_ref}'.")
         return True
 
     return client.mutate(_write)
 
 
-def get_tm(client: MiraDatabaseClient, ode_ref: int):
+def get_tm(client: MiraDatabaseClient, ode_ref: int) -> dict | None:
     """Retrieve an ODE's MIRA template model information by ODE ID.
 
     Parameters
@@ -1205,11 +1228,11 @@ def remove_tm(client: MiraDatabaseClient, ode_ref: int) -> bool:
     def _write(sess):
         p = sess.query(MiraModel).filter_by(ode_ref=ode_ref).first()
         if not p:
-            logger.warning("MiraModel for ode_ref '%s' not found.", ode_ref)
+            logger.warning(f"MiraModel for ode_ref '{ode_ref}' not found.")
             return False
         sess.delete(p)
         logger.info(
-            "Deleted MiraModel for ode_ref '%s' and all linked rows.", ode_ref
+            f"Deleted MiraModel for ode_ref '{ode_ref}' and all linked rows."
         )
         return True
 
@@ -1219,15 +1242,14 @@ def remove_tm(client: MiraDatabaseClient, ode_ref: int) -> bool:
 def get_template_model_by_ode_id(
     client: MiraDatabaseClient, ode_id: int
 ) -> TemplateModel | None:
-    """Look up the mira_template_models row whose ode_ref == ode_id and
-    deserialize it into a TemplateModel.  Returns None if not found.
+    """Look up a mira_template_model by ode_id
 
     Parameters
     ----------
     client :
         An instance of MiraDatabaseClient.
     ode_id :
-        The ID of the ODE.
+        The ID of the ODE. Matches against MiraModel.ode_ref.
 
     Returns
     -------
@@ -1245,7 +1267,8 @@ def get_template_model_by_ode_id(
 
     raw = row["mira_template_model"]
 
-    # Todo: should be removed once sure that the database is not returning strings
+    # Todo: should be removed once sure that the database is not returning
+    #  strings
     if isinstance(raw, str):
         raw = json.loads(raw)
 
