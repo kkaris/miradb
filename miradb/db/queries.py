@@ -244,6 +244,8 @@ def search_publication_summaries(
     :
         A list of publication summaries as dicts.
     """
+    if not q:
+        raise ValueError("Search query cannot be empty.")
     pattern = f"%{q.lower()}%"
     ode_count_sq = _ode_count_subquery(outer_join_odes=False)
     gc_pmid_sq = _pmids_matching_grounded_concepts_subquery()
