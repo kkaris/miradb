@@ -60,22 +60,6 @@ def add_extraction_methods(client: MiraDatabaseClient) -> None:
         )
 
 
-def get_folder_names(model_path: Path) -> list[str]:
-    """Return the names of all subdirectories under model_path.
-
-    Parameters
-    ----------
-    model_path :
-        Path to the root directory containing PMID subfolders.
-
-    Returns
-    -------
-    :
-        Names of all subdirectories under ``model_path``.
-    """
-    return [f.name for f in model_path.iterdir() if f.is_dir()]
-
-
 def get_xml_text(el) -> str | None:
     """Recursively concatenate all text inside an XML element.
 
@@ -304,7 +288,7 @@ def main():
     client.create_tables()
 
     add_extraction_methods(client=client)
-    folder_names = get_folder_names(MODEL_PATH)
+    folder_names = [f.name for f in MODEL_PATH.iterdir() if f.is_dir()]
 
     for method in ("xml_extraction", "marker", "mineru_image", "mineru_text"):
         ingest_extraction_method(client, folder_names, method)
