@@ -1,0 +1,18 @@
+[
+    {
+        "extraction_method": "marker",
+        "description": "LLM Pipeline, Text, GPU, Marker"
+    },
+    {
+        "extraction_method": "mineru_image",
+        "description": "LLM Pipeline, Image, CPU, MinerU"
+    },
+    {
+        "extraction_method": "mineru_text",
+        "description": "LLM Pipeline, Text, CPU, MinerU"
+    },
+    {
+        "extraction_method": "xml_extraction",
+        "description": "LLM Pipeline, Text, CPU, pubmed xml file"
+    }
+]
