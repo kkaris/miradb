@@ -32,10 +32,10 @@ def index():
 def search_pmids():
     """Search across text_references metadata and grounded_concepts JSON.
 
-    Searches:
-      - text_references: pmid, title, author_list, pub_year
-      - mira_template_models.grounded_concepts JSON. Covers variable names,
-        ontology IDs, context keys and values
+    The search is performed over:
+      - text_references, including pmid, title, authors, and publication year.
+      - mira_template_models.grounded_concepts JSON, which covers variable
+        names, ontology IDs, context keys and values.
 
     Response format:
     [
@@ -44,7 +44,7 @@ def search_pmids():
             "title": "...",
             "author_list": "...",
             "pub_year": ...,
-            "model_count": N
+            "model_count": ...
         },
         ...
     ]
@@ -116,7 +116,7 @@ def download_json(ode_id: int):
 
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sbml")
 def download_sbml(ode_id: int):
-    """Export the given model as SBML"""
+    """Export the given model as SBML xml"""
     tm = queries.get_template_model_by_ode_id(client, ode_id)
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")

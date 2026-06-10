@@ -23,7 +23,7 @@ def add_extraction_methods(client: MiraDatabaseClient) -> None:
 
     Parameters
     ----------
-    client : MiraDatabaseClient
+    client :
         MiraDatabaseClient instance.
 
     Notes
@@ -97,7 +97,7 @@ def ingest_extraction_method(
     folder_names: list[str],
     method: str,
     model_path: Path = MODEL_PATH,
-) -> None:
+):
     """Ingest TemplateModel outputs from per-PMID folders into the database.
 
     Parameters
@@ -123,7 +123,9 @@ def ingest_extraction_method(
                 data = json.load(f)
 
             # Load intermediates JSON
-            intermediates_file = model_path / pmid / "tm" / method / f"{pmid}_intermediates.json"
+            intermediates_file = (
+                model_path / pmid / "tm" / method / f"{pmid}_intermediates.json"
+            )
             with open(intermediates_file) as f:
                 intermediates = json.load(f)
 
@@ -137,21 +139,26 @@ def ingest_extraction_method(
             # Locate the PMC subfolder (name starts with "P")
             base = model_path / str(pmid)
             pmc_folder = next(
-                (p for p in base.iterdir() if p.is_dir() and p.name.startswith("P")),
-                None,
+                (
+                    p for p in base.iterdir()
+                    if p.is_dir() and p.name.startswith("P")
+                ), None
             )
-            folder_path = str(pmc_folder.relative_to(base.parent)) if pmc_folder else None
+            folder_path = (
+                str(pmc_folder.relative_to(base.parent)) if pmc_folder else None
+            )
 
             # Determine extracted_info_path per method
             extracted_info_path = intermediates["ode"]["extraction_file"]
 
             if method == "marker":
                 extracted_info_path = f"{base.stem}/{method}"
-                assert pmc_folder is not None, f"[{pmid}] No PMC folder found for marker method."
+                assert pmc_folder is not None, \
+                    f"[{pmid}] No PMC folder found for marker method."
 
             elif "mineru" in method:
                 if not pmc_folder:
-                    logger.warning(f"[{pmid}] No PMC folder found — skipping.")
+                    logger.warning(f"[{pmid}] No PMC folder found - skipping.")
                     continue
                 nxml_file = next(
                     (f for f in pmc_folder.iterdir() if f.suffix == ".nxml"),
@@ -159,7 +166,7 @@ def ingest_extraction_method(
                 )
                 if not nxml_file:
                     logger.warning(
-                        f"[{pmid}] No .nxml file in PMC folder — skipping."
+                        f"[{pmid}] No .nxml file in PMC folder - skipping."
                     )
                     continue
                 extracted_info_path = f"{base.stem}/{nxml_file.stem}"
@@ -194,7 +201,7 @@ def ingest_extraction_method(
 def update_metadata_from_nxml(
     client: MiraDatabaseClient,
     folder_names: list[str],
-) -> None:
+):
     """Parse article NXML files and update bibliographic metadata.
 
     Parameters
@@ -216,7 +223,9 @@ def update_metadata_from_nxml(
             None,
         )
         if not pmc_folder:
-            logger.warning(f"[{pmid}] No PMC folder found — skipping metadata update.")
+            logger.warning(
+                f"[{pmid}] No PMC folder found - skipping metadata update."
+            )
             continue
 
         nxml_file = next(
@@ -224,7 +233,9 @@ def update_metadata_from_nxml(
             None,
         )
         if not nxml_file:
-            logger.warning(f"[{pmid}] No .nxml file found — skipping metadata update.")
+            logger.warning(
+                f"[{pmid}] No .nxml file found - skipping metadata update."
+            )
             continue
 
         tree = ET.parse(os.path.join(pmc_folder, nxml_file))
