@@ -2,18 +2,22 @@
   "extraction_methods": [
     {
       "extraction_method": "marker",
+      "label": "Marker Extraction",
       "description": "LLM Pipeline, Text, GPU, Marker"
     },
     {
       "extraction_method": "mineru_image",
+      "label": "MinerU Image Pipeline",
       "description": "LLM Pipeline, Image, CPU, MinerU"
     },
     {
       "extraction_method": "mineru_text",
+      "label": "MinerU Text Extraction",
       "description": "LLM Pipeline, Text, CPU, MinerU"
     },
     {
       "extraction_method": "xml_extraction",
+      "label": "XML Extraction",
       "description": "LLM Pipeline, Text, CPU, pubmed xml file"
     }
   ],
