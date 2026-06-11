@@ -4,4 +4,6 @@ from pathlib import Path
 EXTRACTION_METHODS_PATH = Path(__file__).parent / "extraction_methods.json"
 
 with EXTRACTION_METHODS_PATH.open("r") as f:
-    EXTRACTION_METHODS_INFO = json.load(f)
+    json_data = json.load(f)
+    EXTRACTION_METHODS_INFO = json_data["extraction_methods"]
+    EXTRACTION_METHODS_PRIORITY = json_data["extraction_method_priority"]

@@ -1,18 +1,26 @@
-[
+{
+  "extraction_methods": [
     {
-        "extraction_method": "marker",
-        "description": "LLM Pipeline, Text, GPU, Marker"
+      "extraction_method": "marker",
+      "description": "LLM Pipeline, Text, GPU, Marker"
     },
     {
-        "extraction_method": "mineru_image",
-        "description": "LLM Pipeline, Image, CPU, MinerU"
+      "extraction_method": "mineru_image",
+      "description": "LLM Pipeline, Image, CPU, MinerU"
     },
     {
-        "extraction_method": "mineru_text",
-        "description": "LLM Pipeline, Text, CPU, MinerU"
+      "extraction_method": "mineru_text",
+      "description": "LLM Pipeline, Text, CPU, MinerU"
     },
     {
-        "extraction_method": "xml_extraction",
-        "description": "LLM Pipeline, Text, CPU, pubmed xml file"
+      "extraction_method": "xml_extraction",
+      "description": "LLM Pipeline, Text, CPU, pubmed xml file"
     }
-]
+  ],
+  "extraction_method_priority": [
+    "marker",
+    "mineru_text",
+    "xml_extraction",
+    "mineru_image"
+  ]
+}
