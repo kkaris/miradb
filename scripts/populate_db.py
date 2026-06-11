@@ -8,7 +8,7 @@ import pystow
 from tqdm import tqdm
 
 from miradb.db.client import MiraDatabaseClient, get_client
-from miradb.db import queries
+from miradb.db import queries, extraction_methods
 
 
 logger = logging.getLogger(__name__)
@@ -18,45 +18,26 @@ logger = logging.getLogger(__name__)
 MODEL_PATH = pystow.module("mira", "paper_extraction").base
 
 
-def add_extraction_methods(client: MiraDatabaseClient) -> None:
+def add_extraction_methods(client: MiraDatabaseClient, extraction_methods: list[dict]) -> None:
     """Populate the ExtractionMethod table with supported extraction methods.
 
     Parameters
     ----------
     client :
         MiraDatabaseClient instance.
+    extraction_methods :
+        List of dictionaries containing extraction method information.
 
     Notes
     -----
     Safe to call on a fresh database; skips insertion for existing rows.
     """
 
-    # Define supported extraction methods and their descriptions
-    # Can add or update methods and descriptions here as needed
-    methods = [
-        (
-            "marker",
-            "LLM Pipeline, Text, GPU, Marker",
-        ),
-        (
-            "mineru_image",
-            "LLM Pipeline, Image, CPU, MinerU",
-        ),
-        (
-            "mineru_text",
-            "LLM Pipeline, Text, CPU, MinerU",
-        ),
-        (
-            "xml_extraction",
-            "LLM Pipeline, Text, CPU, pubmed xml file",
-        ),
-    ]
-
-    for method, desc in methods:
+    for method in extraction_methods:
         queries.add_extraction_method(
             client=client,
-            extraction_method=method,
-            extraction_method_desc=desc,
+            extraction_method=method["extraction_method"],
+            extraction_method_desc=method["description"],
         )
 
 
@@ -283,15 +264,15 @@ def update_metadata_from_nxml(
 
 
 def main():
-    client = get_client("primary")
+    client = get_client("test2")
 
     client.create_tables()
 
-    add_extraction_methods(client=client)
+    add_extraction_methods(client=client, extraction_methods=extraction_methods.extraction_methods)
     folder_names = [f.name for f in MODEL_PATH.iterdir() if f.is_dir()]
 
-    for method in ("xml_extraction", "marker", "mineru_image", "mineru_text"):
-        ingest_extraction_method(client, folder_names, method)
+    for method in extraction_methods.extraction_methods:
+        ingest_extraction_method(client, folder_names, method["extraction_method"])
 
     update_metadata_from_nxml(client, folder_names)
 
