@@ -7,6 +7,10 @@ from sqlalchemy.sql.expression import text as sa_text
 from sympy import Derivative, latex
 
 from miradb.db.client import MiraDatabaseClient
+from miradb.db.extraction_methods import (
+    EXTRACTION_METHOD_LABELS,
+    EXTRACTION_METHODS_PRIORITY,
+)
 from miradb.db.schema import (
     ExtractionMethod,
     MiraModel,
@@ -21,13 +25,6 @@ from mira.modeling.ode import OdeModel
 
 
 logger = logging.getLogger(__name__)
-
-EXTRACTION_METHOD_LABELS = {
-    1: "Marker Extraction",
-    2: "MinerU Image Pipeline",
-    3: "MinerU Text Extraction",
-    4: "XML Extraction",
-}
 
 
 def _derivative_to_latex(expr) -> str:
@@ -282,8 +279,8 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
         A list of dictionaries, each describing one extracted model.
         The dictionary keys are:
         - id: The ode_expressions row ID.
-        - extraction_method: 0-based extraction method index for the frontend.
-        - method_label: Human-readable extraction method name.
+        - extraction_method: Extraction method key (e.g. ``marker``).
+        - method_label: Short display name for the extraction method.
         - latex: List of LaTeX equation strings.
         - grounded_concepts: Grounded concept metadata for the model.
     """
@@ -295,13 +292,14 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
     stmt = (
         select(
             ODEs.id,
-            ODEs.extraction_method_id,
+            ExtractionMethod.extraction_method,
             ODEs.ode,
             ODEs.corrected_ode,
             MiraModel.mira_template_model,
             MiraModel.grounded_concepts,
         )
         .join(TextContent, ODEs.txt_content_ref == TextContent.id)
+        .join(ExtractionMethod, ODEs.extraction_method_id == ExtractionMethod.id)
         .outerjoin(MiraModel, MiraModel.ode_ref == ODEs.id)
         .where(TextContent.text_ref == text_ref["id"])
     )
@@ -320,20 +318,26 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
         if not latex_lines:
             latex_lines = [row.get("corrected_ode") or row.get("ode")]
 
-        method = row["extraction_method_id"]
+        method_key = row["extraction_method"]
         results.append(
             {
                 "id": row["id"],
-                "extraction_method": method - 1,
+                "extraction_method": method_key,
                 "method_label": EXTRACTION_METHOD_LABELS.get(
-                    method, f"Method {method}"
+                    method_key, method_key
                 ),
                 "latex": latex_lines,
                 "grounded_concepts": grounded_concepts or {},
             }
         )
 
-    results.sort(key=lambda r: r["extraction_method"])
+    def _priority_index(method_key: str) -> int:
+        try:
+            return EXTRACTION_METHODS_PRIORITY.index(method_key)
+        except ValueError:
+            return len(EXTRACTION_METHODS_PRIORITY)
+
+    results.sort(key=lambda r: _priority_index(r["extraction_method"]))
     return results
 
 

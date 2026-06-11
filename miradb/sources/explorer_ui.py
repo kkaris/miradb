@@ -7,6 +7,7 @@ import json
 import io
 from miradb.db.client import get_client
 from miradb.db import queries
+from miradb.db.extraction_methods import EXTRACTION_METHODS_PRIORITY
 from mira.modeling import Model
 from mira.modeling.ode import OdeModel
 from mira.metamodel.template_model import Time
@@ -25,7 +26,10 @@ symbol_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 @explorer_blueprint.route("/")
 def index():
     """Serve the explorer SPA shell."""
-    return render_template("explorer.html")
+    return render_template(
+        "explorer.html",
+        extraction_method_priority=EXTRACTION_METHODS_PRIORITY,
+    )
 
 
 @explorer_blueprint.route("/api/search")
@@ -85,8 +89,8 @@ def get_models_for_pmid(pmid: str):
     [
         {
             "id": 1,
-            "extraction_method_id": 0,
-            "method_label": "Multi-Agent Pipeline",
+            "extraction_method": "marker",
+            "method_label": "Marker Extraction",
             "latex": ["\\frac{dS}{dt} = ...", ...]
             "grounded_concepts": {}
         },
