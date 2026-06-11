@@ -8,7 +8,8 @@ import pystow
 from tqdm import tqdm
 
 from miradb.db.client import MiraDatabaseClient, get_client
-from miradb.db import queries, extraction_methods
+from miradb.db.extraction_methods import EXTRACTION_METHODS_INFO
+from miradb.db import queries
 
 
 logger = logging.getLogger(__name__)
@@ -268,10 +269,10 @@ def main():
 
     client.create_tables()
 
-    add_extraction_methods(client=client, extraction_methods=extraction_methods.extraction_methods)
+    add_extraction_methods(client=client, extraction_methods=EXTRACTION_METHODS_INFO)
     folder_names = [f.name for f in MODEL_PATH.iterdir() if f.is_dir()]
 
-    for method in extraction_methods.extraction_methods:
+    for method in EXTRACTION_METHODS_INFO:
         ingest_extraction_method(client, folder_names, method["extraction_method"])
 
     update_metadata_from_nxml(client, folder_names)
