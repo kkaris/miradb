@@ -552,6 +552,10 @@ function setupLazySummaryCards(grid) {
 ════════════════════════════════════════════════════════════ */
 function renderGrid() {
     const grid = document.getElementById('ep-grid');
+    if (!allEpidemics.length) {
+        grid.innerHTML = '<p class="text-muted small text-center py-5 w-100">No models found.</p>';
+        return;
+    }
     grid.innerHTML = allEpidemics.map(ep => buildSummaryCard(ep)).join('');
 
     setupLazySummaryCards(grid);
