@@ -593,7 +593,8 @@ async function loadSummaryCard(pmid) {
         const models = await resp.json();
 
         if (!models.length) {
-            container.innerHTML = '<p class="text-muted small text-center py-2">No models stored.</p>';
+            const card = container.closest('.ep-summary-card');
+            if (card) card.remove();
             return true;
         }
 

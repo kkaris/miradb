@@ -185,7 +185,9 @@ def _pmids_matching_grounded_concepts_subquery():
 
 
 def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
-    """Return every text_reference with a count of converted TemplateModels.
+    """Return text_references that have at least one converted TemplateModel.
+
+    Only publications with ``model_count > 0`` are included.
 
     Parameters
     ----------
@@ -217,8 +219,10 @@ def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
     ]
     """
     ode_count_sq = _ode_count_subquery(outer_join_odes=True)
-    stmt = _publication_summary_select(ode_count_sq).order_by(
-        func.coalesce(ode_count_sq.c.ode_count, 0).desc()
+    stmt = (
+        _publication_summary_select(ode_count_sq)
+        .where(func.coalesce(ode_count_sq.c.ode_count, 0) > 0)
+        .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc())
     )
     rows = client.query(stmt)
     return [_format_publication_summary(row) for row in rows]
@@ -228,6 +232,8 @@ def search_publication_summaries(
     client: MiraDatabaseClient, q: str
 ) -> list[dict]:
     """Search text_references by metadata and grounded_concepts JSON.
+
+    Only publications with at least one converted TemplateModel are returned.
 
     Parameters
     ----------
@@ -259,6 +265,7 @@ def search_publication_summaries(
                 TextRef.pmid.in_(gc_pmid_sq),
             )
         )
+        .where(func.coalesce(ode_count_sq.c.ode_count, 0) > 0)
         .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc())
     )
     rows = client.query(stmt, {"pattern": pattern})

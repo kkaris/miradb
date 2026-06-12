@@ -53,7 +53,8 @@ def search_pmids():
         ...
     ]
 
-    Returns empty list if no query is provided.
+    Only publications with at least one extracted model (model_count > 0) are
+    included. Returns empty list if no query is provided.
     """
     q = request.args.get("q", "").strip()
     if not q:
@@ -63,7 +64,7 @@ def search_pmids():
 
 @explorer_blueprint.route("/api/pmids")
 def get_all_pmids():
-    """Return all text_references and its associated count of ode_expressions
+    """Return text_references that have at least one extracted model.
 
     Response format:
     [
@@ -76,6 +77,8 @@ def get_all_pmids():
         },
         ...
     ]
+
+    Only publications with model_count > 0 are included.
     """
     rows = queries.list_publication_summaries(client)
     return jsonify(rows)
