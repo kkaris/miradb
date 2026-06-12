@@ -265,7 +265,7 @@ def update_metadata_from_nxml(
 
 
 def main():
-    client = get_client("test2")
+    client = get_client()
 
     client.create_tables()
 
