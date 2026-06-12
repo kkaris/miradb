@@ -101,6 +101,8 @@ def _ode_count_subquery(*, outer_join_odes: bool = True):
             func.count(ODEs.id).label("ode_count"),
         )
         .join(ODEs, ODEs.txt_content_ref == TextContent.id, **join_kwargs)
+        .join(MiraModel, MiraModel.ode_ref == ODEs.id)
+        .where(MiraModel.mira_template_model.isnot(None))
         .group_by(TextContent.text_ref)
         .subquery()
     )
@@ -183,7 +185,7 @@ def _pmids_matching_grounded_concepts_subquery():
 
 
 def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
-    """Return every text_reference with a count of associated ode_expressions.
+    """Return every text_reference with a count of converted TemplateModels.
 
     Parameters
     ----------
@@ -199,7 +201,7 @@ def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
         - title: The title of the publication.
         - author_list: The list of authors of the publication.
         - pub_year: The year of the publication.
-        - model_count: The number of ODE expressions associated with the publication.
+        - model_count: The number of converted TemplateModels for the publication.
 
     Example
     -------
@@ -264,7 +266,10 @@ def search_publication_summaries(
 
 
 def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
-    """Return all ode_expressions for a PMID with LaTeX-rendered equations.
+    """Return converted models for a PMID with LaTeX-rendered equations.
+
+    Only ``ode_expressions`` rows linked to a non-null
+    ``mira_template_models.mira_template_model`` are included.
 
     Parameters
     ----------
@@ -293,30 +298,29 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
         select(
             ODEs.id,
             ExtractionMethod.extraction_method,
-            ODEs.ode,
-            ODEs.corrected_ode,
             MiraModel.mira_template_model,
             MiraModel.grounded_concepts,
         )
         .join(TextContent, ODEs.txt_content_ref == TextContent.id)
         .join(ExtractionMethod, ODEs.extraction_method_id == ExtractionMethod.id)
-        .outerjoin(MiraModel, MiraModel.ode_ref == ODEs.id)
-        .where(TextContent.text_ref == text_ref["id"])
+        .join(MiraModel, MiraModel.ode_ref == ODEs.id)
+        .where(
+            TextContent.text_ref == text_ref["id"],
+            MiraModel.mira_template_model.isnot(None),
+        )
     )
     rows = client.query(stmt)
 
     results = []
     for row in rows:
-        tm = None
-        if row["mira_template_model"] is not None:
-            tm = {
-                "mira_template_model": row["mira_template_model"],
-                "grounded_concepts": row["grounded_concepts"],
-            }
+        tm = {
+            "mira_template_model": row["mira_template_model"],
+            "grounded_concepts": row["grounded_concepts"],
+        }
 
         latex_lines, grounded_concepts = _template_to_latex_lines(tm, row["id"])
         if not latex_lines:
-            latex_lines = [row.get("corrected_ode") or row.get("ode")]
+            continue
 
         method_key = row["extraction_method"]
         results.append(
