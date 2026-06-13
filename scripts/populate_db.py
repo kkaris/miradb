@@ -159,8 +159,13 @@ def ingest_extraction_method(
                 mira_template_model=data,
             )
 
-        except Exception as e:
-            logger.error(f"[{pmid}] Error during ingestion: {e}")
+        except FileNotFoundError:
+            # No output for this PMID under this method, which is expected when
+            # the paper was extracted with a different method.
+            logger.debug(f"[{pmid}] No {method} output found, skipping.")
+            continue
+        except Exception:
+            logger.exception(f"[{pmid}] Error during ingestion")
             continue
 
 

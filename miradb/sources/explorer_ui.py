@@ -19,8 +19,21 @@ logger = logging.getLogger(__name__)
 explorer_blueprint = Blueprint("explorer", __name__, url_prefix="/explorer")
 explorer_blueprint.template_folder = "templates"
 
-client = get_client("primary")
 symbol_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
+
+_client = None
+
+
+def get_db_client():
+    """Return the database client, creating it on first use.
+
+    Initialized lazily so importing this module does not require a reachable
+    database.
+    """
+    global _client
+    if _client is None:
+        _client = get_client("primary")
+    return _client
 
 
 @explorer_blueprint.route("/")
@@ -59,7 +72,7 @@ def search_pmids():
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
-    return jsonify(queries.search_publication_summaries(client, q))
+    return jsonify(queries.search_publication_summaries(get_db_client(), q))
 
 
 @explorer_blueprint.route("/api/pmids")
@@ -80,7 +93,7 @@ def get_all_pmids():
 
     Only publications with model_count > 0 are included.
     """
-    rows = queries.list_publication_summaries(client)
+    rows = queries.list_publication_summaries(get_db_client())
     return jsonify(rows)
 
 
@@ -100,14 +113,14 @@ def get_models_for_pmid(pmid: str):
       ...
     ]
     """
-    results = queries.list_models_for_pmid(client, pmid)
+    results = queries.list_models_for_pmid(get_db_client(), pmid)
     return jsonify(results)
 
 
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/json")
 def download_json(ode_id: int):
     """Export the given model as a MIRA TemplateModel JSON"""
-    tm = queries.get_template_model_by_ode_id(client, ode_id)
+    tm = queries.get_template_model_by_ode_id(get_db_client(), ode_id)
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
@@ -124,7 +137,7 @@ def download_json(ode_id: int):
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sbml")
 def download_sbml(ode_id: int):
     """Export the given model as SBML xml"""
-    tm = queries.get_template_model_by_ode_id(client, ode_id)
+    tm = queries.get_template_model_by_ode_id(get_db_client(), ode_id)
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
@@ -157,7 +170,7 @@ def download_sbml(ode_id: int):
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sympy")
 def download_sympy(ode_id: int):
     """Export ODEs as a SymPy .py file"""
-    tm = queries.get_template_model_by_ode_id(client, ode_id)
+    tm = queries.get_template_model_by_ode_id(get_db_client(), ode_id)
 
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")

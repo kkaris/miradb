@@ -34,16 +34,22 @@ class MiraDatabaseSessionManager(object):
         return self.session
 
     def __exit__(self, exception_type, exception_value, traceback):
-        if exception_type:
-            logger.exception(exception_value)
-            logger.info("Got exception: rolling back.")
-            self.session.rollback()
-        else:
-            logger.debug("Committing changes...")
-            self.session.commit()
-
-        # Close the session.
-        self.session.close()
+        try:
+            if exception_type:
+                logger.exception(exception_value)
+                logger.info("Got exception: rolling back.")
+                self.session.rollback()
+            else:
+                logger.debug("Committing changes...")
+                try:
+                    self.session.commit()
+                except Exception:
+                    logger.exception("Commit failed; rolling back.")
+                    self.session.rollback()
+                    raise
+        finally:
+            # Always close the session, even if commit/rollback raised.
+            self.session.close()
 
 
 class MiraDatabaseClient:
@@ -233,7 +239,7 @@ class MiraDatabaseClient:
         else:
             for tbl in tables:
                 logger.info("Removing %s..." % tbl.__tablename__)
-                if tbl.__table__.exists(self.engine):
+                if self.table_exists(tbl.__tablename__):
                     tbl.__table__.drop(self.engine)
                     logger.debug("Table removed.")
                 else:
