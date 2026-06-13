@@ -81,9 +81,13 @@ def main():
     # modify based on preferred settings
     extractor = "mineru"  # options: "mineru" or "marker" or "xml"
     extraction_method = "image"  # options: "text" or "image"
+    # Canonical extraction-method folder name that populate_db.py reads (see
+    # miradb/db/extraction_methods.json). Marker and XML are text-only, so they
+    # use a fixed name rather than the "{extractor}_{method}" form.
+    fixed_names = {"marker": "marker", "xml": "xml_extraction"}
+    folder_name = fixed_names.get(extractor, f"{extractor}_{extraction_method}")
 
     # Track progress - append to CSV after each success
-    folder_name = f"{extractor}_{extraction_method}"
     output_directory = BASE.join(folder_name)
     output_directory.mkdir(parents=True, exist_ok=True)
     progress_file = output_directory / "extraction_progress.csv"
