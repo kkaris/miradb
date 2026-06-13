@@ -36,7 +36,7 @@ def result_to_intermediates(result):
     grounding = result.grounding
     concepts = None
     if grounding is not None and grounding.concepts:
-        concepts = {k: v.model_dump() for k, v in grounding.concepts.items()}
+        concepts = {k: v.to_json() for k, v in grounding.concepts.items()}
 
     return {
         "ode_str": result.extraction.ode_str if result.extraction else None,
@@ -68,7 +68,7 @@ def save_with_intermediates(template_model, result, pmid, folder_name):
     with open(out_dir / f"{pmid}_intermediates.json", 'w') as f:
         json.dump(intermediates, f, indent=2)
     with open(out_dir / f"{pmid}.json", 'w') as f:
-        json.dump(template_model.model_dump(), f, indent=2)
+        json.dump(template_model.to_json(), f, indent=2)
 
 
 def main():

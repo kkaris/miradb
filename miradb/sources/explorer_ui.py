@@ -124,7 +124,7 @@ def download_json(ode_id: int):
     if tm is None:
         abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
-    json_bytes = json.dumps(tm.model_dump(), indent=2).encode("utf-8")
+    json_bytes = json.dumps(tm.to_json(), indent=2).encode("utf-8")
 
     return send_file(
         io.BytesIO(json_bytes),
