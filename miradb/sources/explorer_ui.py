@@ -1,17 +1,15 @@
 import logging
+import re
+import math
 
 from flask import Blueprint, jsonify, render_template, request, send_file, abort
-from sqlalchemy import select, Table, MetaData, func, or_, cast, Text, literal
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql.expression import text as sa_text
-from sympy import latex, Derivative
 import json
 import io
-import math
-from miradb.db.manager import get_db
+from miradb.db.client import get_client
+from miradb.db import queries
+from miradb.db.extraction_methods import EXTRACTION_METHODS_PRIORITY
 from mira.modeling import Model
 from mira.modeling.ode import OdeModel
-from mira.metamodel import TemplateModel
 from mira.metamodel.template_model import Time
 from mira.modeling.sbml import template_model_to_sbml_string
 
@@ -21,380 +19,110 @@ logger = logging.getLogger(__name__)
 explorer_blueprint = Blueprint("explorer", __name__, url_prefix="/explorer")
 explorer_blueprint.template_folder = "templates"
 
-# ── DB setup ──────────────
+symbol_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 
-db = get_db('primary')
-engine = db.engine
-
-metadata = MetaData()
-text_references      = Table("text_references",      metadata, autoload_with=engine)
-text_contents        = Table("text_contents",        metadata, autoload_with=engine)
-ode_expressions      = Table("ode_expressions",      metadata, autoload_with=engine)
-mira_template_models = Table("mira_template_models", metadata, autoload_with=engine)
-
-Session = sessionmaker(bind=engine)
+_client = None
 
 
-extraction_method_LABELS = {
-    1: "Marker Extraction",
-    2: "MinerU Image Pipeline",
-    3: "MinerU Text Extraction",
-    4: "XML Extraction",
-}
+def get_db_client():
+    """Return the database client, creating it on first use.
 
+    Initialized lazily so importing this module does not require a reachable
+    database.
+    """
+    global _client
+    if _client is None:
+        _client = get_client("primary")
+    return _client
 
-def _derivative_to_latex(expr) -> str:
-    """Render Derivative(X, t) as \\frac{dX}{dt} instead of \\frac{d}{dt} X."""
-    if isinstance(expr, Derivative) and len(expr.args) == 2:
-        var, (wrt, _) = expr.args
-        return r"\frac{d" + latex(var) + r"}{d" + latex(wrt) + r"}"
-    return latex(expr)
-
-
-def _template_to_latex_lines(tm, ode_id) -> tuple[list[str], dict | None]:
-    if not tm or not tm.get("mira_template_model"):
-        return [], []
-
-    try:
-        raw = tm["mira_template_model"]
-        if isinstance(raw, str):
-            raw = json.loads(raw)
-
-        loaded_model = TemplateModel.from_json(raw)
-        loaded_model.time = Time(name='t', units=None)
-
-        om = OdeModel(
-            model=Model(template_model=loaded_model),
-            initialized=False,
-        )
-
-        # get_interpretable_kinetics() returns a list of (lhs, rhs) Eq objects or a Matrix
-        kinetics = om.get_interpretable_kinetics()
-
-        latex_lines = []
-
-        if hasattr(kinetics, 'tolist'):
-            rows = kinetics.tolist()
-            for row in rows:
-                if len(row) == 3:
-                    # Handle case where get_interpretable_kinetics returns (lhs, '=', rhs)
-                    lhs, _, rhs = row
-                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                elif len(row) == 2:
-                    # Handle case where get_interpretable_kinetics returns (lhs, rhs) without the '='
-                    lhs, rhs = row
-                    latex_lines.append(_derivative_to_latex(lhs) + " = " + latex(rhs))
-                else:
-                    for expr in row:
-                        latex_lines.append(latex(expr))
-
-        elif isinstance(kinetics, (list, tuple)):
-            for expr in kinetics:
-                latex_lines.append(latex(expr))
-
-        else:
-            latex_lines.append(latex(kinetics))
-
-        raw_gc = tm.get("grounded_concepts")
-        if isinstance(raw_gc, str):
-            try:
-                raw_gc = json.loads(raw_gc)
-            except Exception:
-                raw_gc = None
-
-        return latex_lines, raw_gc
-
-    except Exception:
-        logger.exception("Failed to render LaTeX for ode id=%s", ode_id)
-        return [], []
-
-
-# ── Routes ───────────────────────────────────────────────────────────────────
 
 @explorer_blueprint.route("/")
 def index():
     """Serve the explorer SPA shell."""
-    return render_template("explorer.html")
+    return render_template(
+        "explorer.html",
+        extraction_method_priority=EXTRACTION_METHODS_PRIORITY,
+    )
 
 
 @explorer_blueprint.route("/api/search")
 def search_pmids():
-    """
-    Server-side search across text_references metadata and grounded_concepts JSON.
-    Returns empty list if no query is provided.
+    """Search across text_references metadata and grounded_concepts JSON.
 
-    Query param: q (string)
+    The search is performed over:
+      - text_references, including pmid, title, authors, and publication year.
+      - mira_template_models.grounded_concepts JSON, which covers variable
+        names, ontology IDs, context keys and values.
 
-    Searches:
-      - text_references: pmid, title, author_list (cast to text), pub_year (cast to text)
-      - mira_template_models.grounded_concepts JSON (cast to text, ILIKE match)
-        covers variable names, ontology IDs, context keys and values
+    Response format:
+    [
+        {
+            "pmid": "...",
+            "title": "...",
+            "author_list": "...",
+            "pub_year": ...,
+            "model_count": ...
+        },
+        ...
+    ]
 
-    Response shape: same as /api/pmids
-    [{"pmid": "...", "title": "...", "author_list": "...", "pub_year": ..., "model_count": N}]
+    Only publications with at least one extracted model (model_count > 0) are
+    included. Returns empty list if no query is provided.
     """
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
-
-    pattern = f"%{q.lower()}%"
-
-    with Session() as session:
-        # Subquery: count ode_expressions per text_reference
-        ode_count_sq = (
-            select(
-                text_contents.c.text_ref,
-                func.count(ode_expressions.c.id).label("ode_count"),
-            )
-            .join(ode_expressions, ode_expressions.c.txt_content_ref == text_contents.c.id)
-            .group_by(text_contents.c.text_ref)
-            .subquery()
-        )
-
-        # Define the lateral subquery properly
-        gc_lateral = (
-            select(
-                sa_text("var_key"),
-                sa_text("var_val"),
-            )
-            .select_from(
-                sa_text("""
-                    jsonb_each(
-                        CASE
-                            WHEN jsonb_typeof(mira_template_models.grounded_concepts::jsonb) = 'array'
-                                AND jsonb_typeof(mira_template_models.grounded_concepts::jsonb -> 0) = 'object'
-                            THEN mira_template_models.grounded_concepts::jsonb -> 0
-                            WHEN jsonb_typeof(mira_template_models.grounded_concepts::jsonb) = 'object'
-                            THEN mira_template_models.grounded_concepts::jsonb
-                            ELSE '{}'::jsonb
-                        END
-                    ) AS gc(var_key, var_val)
-                """)
-            )
-            .lateral("gc_rows")
-        )
-
-        gc_pmid_sq = (
-            select(text_references.c.pmid)
-            .join(text_contents, text_contents.c.text_ref == text_references.c.id)
-            .join(ode_expressions, ode_expressions.c.txt_content_ref == text_contents.c.id)
-            .join(mira_template_models, mira_template_models.c.ode_ref == ode_expressions.c.id)
-            .join(gc_lateral, literal(True))
-            .where(
-                or_(
-                    sa_text("gc_rows.var_key ILIKE :pattern"),
-                    sa_text("""
-                        EXISTS (
-                            SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'identifiers') AS id(k, v)
-                            WHERE id.k ILIKE :pattern OR id.v ILIKE :pattern
-                        )
-                    """),
-                    sa_text("""
-                        EXISTS (
-                            SELECT 1 FROM jsonb_each_text(gc_rows.var_val -> 'context') AS ctx(k, v)
-                            WHERE ctx.k ILIKE :pattern OR ctx.v ILIKE :pattern
-                        )
-                    """),
-                )
-            )
-            .distinct()
-            .subquery()
-        )
-
-        rows = session.execute(
-            select(
-                text_references.c.pmid,
-                text_references.c.title,
-                text_references.c.authors,
-                text_references.c.year,
-                func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
-            )
-            .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == text_references.c.id)
-            .where(
-                or_(
-                    text_references.c.pmid.ilike(pattern),
-                    text_references.c.title.ilike(pattern),
-                    cast(text_references.c.authors, Text).ilike(pattern),
-                    cast(text_references.c.year,   Text).ilike(pattern),
-                    text_references.c.pmid.in_(gc_pmid_sq),
-                )
-            )
-            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
-            {"pattern": pattern}
-        ).mappings().all()
-
-    return jsonify([
-        {
-            "pmid":        r["pmid"],
-            "title":       r["title"] or "",
-            "author_list": ", ".join(r["authors"]) if r["authors"] else "",
-            "pub_year":    r["year"],
-            "model_count": r["model_count"],
-        }
-        for r in rows
-    ])
+    return jsonify(queries.search_publication_summaries(get_db_client(), q))
 
 
 @explorer_blueprint.route("/api/pmids")
 def get_all_pmids():
-    """
-    Returns every text_reference with a count of its associated ode_expressions.
+    """Return text_references that have at least one extracted model.
 
-    Response shape (list):
+    Response format:
     [
-      {
-        "pmid":       "33451107",
-        "title":      "A SEIR model …",
-        "author_list": "Zhang et al.",
-        "pub_year":   2021,
-        "model_count": 3
-      },
-      …
-    ]
-    """
-    with Session() as session:
-        # Subquery: count ode_expressions reachable from each text_reference
-        ode_count_sq = (
-        select(
-            text_contents.c.text_ref,
-            func.count(ode_expressions.c.id).label("ode_count"),
-        )
-        .join(ode_expressions, ode_expressions.c.txt_content_ref == text_contents.c.id, isouter=True)
-        .group_by(text_contents.c.text_ref)
-        .subquery()
-        )
-
-        rows = session.execute(
-            select(
-                text_references.c.pmid,
-                text_references.c.title,
-                text_references.c.authors,
-                text_references.c.year,
-                func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
-            )
-            .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == text_references.c.id)
-            .order_by(func.coalesce(ode_count_sq.c.ode_count, 0).desc()),
-        ).mappings().all()
-
-    return jsonify([
         {
-            "pmid":        r["pmid"],
-            "title":       r["title"] or "",
-            "author_list": ", ".join(r["authors"]) if r["authors"] else "",
-            "pub_year":    r["year"],
-            "model_count": r["model_count"],
-        }
-        for r in rows
-    ])
+            "pmid": "33451107",
+            "title": "An SEIR model of influenza",
+            "author_list": "Zhang et al.",
+            "pub_year":   2021,
+            "model_count": 3
+        },
+        ...
+    ]
+
+    Only publications with model_count > 0 are included.
+    """
+    rows = queries.list_publication_summaries(get_db_client())
+    return jsonify(rows)
 
 
 @explorer_blueprint.route("/api/pmids/<pmid>/models")
 def get_models_for_pmid(pmid: str):
-    """
-    Returns all ode_expressions for a given PMID, with LaTeX-rendered equations.
+    """Return all ode_expressions for a PMID, with LaTeX-rendered equations.
 
-    Response shape (list):
+    Response format:
     [
-      {
-        "id":                1,
-        "extraction_method_id": 0,
-        "method_label":      "Multi-Agent Pipeline",
-        "latex":             ["\\frac{dS}{dt} = …", …]
-        "grounded_concepts": {}
-      },
-      …
+        {
+            "id": 1,
+            "extraction_method": "marker",
+            "method_label": "Marker Extraction",
+            "latex": ["\\frac{dS}{dt} = ...", ...]
+            "grounded_concepts": {}
+        },
+      ...
     ]
     """
-    with Session() as session:
-        text_ref = session.execute(
-            select(text_references).where(text_references.c.pmid == pmid)
-        ).mappings().first()
-
-        if not text_ref:
-            return jsonify([])
-
-        # All text_contents rows for this reference
-        contents = session.execute(
-            select(text_contents).where(
-                text_contents.c.text_ref == text_ref["id"]
-            )
-        ).mappings().all()
-
-        pending = []
-        for content in contents:
-            odes = session.execute(
-                select(ode_expressions).where(
-                    ode_expressions.c.txt_content_ref == content["id"]
-                )
-            ).mappings().all()
-
-            for ode in odes:
-                pending.append(dict(ode))
-
-        tm_by_ode_id = {}
-        ode_ids = [ode["id"] for ode in pending]
-        if ode_ids:
-            tm_rows = session.execute(
-                select(mira_template_models).where(
-                    mira_template_models.c.ode_ref.in_(ode_ids)
-                )
-            ).mappings().all()
-            tm_by_ode_id = {row["ode_ref"]: dict(row) for row in tm_rows}
-
-        pending = [(ode, tm_by_ode_id.get(ode["id"])) for ode in pending]
-
-    results = []
-    for ode, tm in pending:
-        latex_lines, grounded_concepts = _template_to_latex_lines(tm, ode["id"])
-        if not latex_lines:
-            latex_lines = [ode.get("corrected_ode") or ode.get("ode")]
-        method = ode["extraction_method_id"]
-
-        results.append({
-            "id":                 ode["id"],
-            "extraction_method":  method - 1,  # convert to 0-based for frontend
-            "method_label":       extraction_method_LABELS.get(method, f"Method {method}"),
-            "latex":              latex_lines,
-            "grounded_concepts":  grounded_concepts or {},
-        })
-
-    # Sort by extraction_method so cards appear in a consistent order
-    results.sort(key=lambda r: r["extraction_method"])
-
+    results = queries.list_models_for_pmid(get_db_client(), pmid)
     return jsonify(results)
 
 
-def _get_template_model_for_ode(session, ode_id: int):
-    """
-    Look up the mira_template_models row whose ode_ref == ode_id and
-    deserialize it into a TemplateModel.  Returns None if not found.
-    """
-    row = session.execute(
-        select(mira_template_models).where(
-            mira_template_models.c.ode_ref == ode_id
-        )
-    ).mappings().first()
-
-    if not row or not row.get("mira_template_model"):
-        return None
-
-    raw = row["mira_template_model"]
-    if isinstance(raw, str):
-        raw = json.loads(raw)
-
-    loaded_model = TemplateModel.from_json(raw)
-    loaded_model.time = Time(name='t', units=None)
-
-    return loaded_model
-
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/json")
 def download_json(ode_id: int):
-    """Export the MIRA TemplateModel as JSON."""
-    with Session() as session:
-        tm = _get_template_model_for_ode(session, ode_id)
-
+    """Export the given model as a MIRA TemplateModel JSON"""
+    tm = queries.get_template_model_by_ode_id(get_db_client(), ode_id)
     if tm is None:
-        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+        abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
     json_bytes = json.dumps(tm.model_dump(), indent=2).encode("utf-8")
 
@@ -406,38 +134,30 @@ def download_json(ode_id: int):
     )
 
 
-def _sanitize_tm_for_sbml(tm):
-    """Replace None/non-numeric parameter values with 0.0 for SBML export."""
-    for param in tm.parameters.values():
-        if param.value is None or (isinstance(param.value, float) and math.isnan(param.value)):
-            param.value = 0.0
-        elif not isinstance(param.value, (int, float)):
-            try:
-                param.value = float(param.value)
-            except (TypeError, ValueError):
-                param.value = 0.0
-    return tm
-
-
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sbml")
 def download_sbml(ode_id: int):
-    """Export the model as SBML via MIRA."""
-
-    with Session() as session:
-        tm = _get_template_model_for_ode(session, ode_id)
-
+    """Export the given model as SBML xml"""
+    tm = queries.get_template_model_by_ode_id(get_db_client(), ode_id)
     if tm is None:
-        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+        abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
     try:
-        # for name, param in tm.parameters.items():
-        #     if not isinstance(getattr(param, 'value', None), (int, float)):
-        #         logger.warning(f"Bad param for SBML: {name!r} = {param.value!r} ({type(param.value)})")
-        tm_clean = _sanitize_tm_for_sbml(tm.model_copy(deep=True))  # don't mutate original
-        sbml_str = template_model_to_sbml_string(tm_clean)
-    except Exception:
-        logger.exception("SBML export failed for ode_id=%s", ode_id)
-        abort(500, description="SBML export failed — see server logs.")
+        # SBML does not allow empty/nan parameter values
+        for param in tm.parameters.values():
+            if param.value is None or (
+                isinstance(param.value, float) and math.isnan(param.value)
+            ):
+                param.value = 0.0
+            elif not isinstance(param.value, (int, float)):
+                try:
+                    param.value = float(param.value)
+                except (TypeError, ValueError):
+                    param.value = 0.0
+        sbml_str = template_model_to_sbml_string(tm)
+    except Exception as e:
+        logger.error(f"SBML export failed for ode id {ode_id}")
+        logger.exception(e)
+        abort(500, description=f"SBML export failed for ode id {ode_id}")
 
     return send_file(
         io.BytesIO(sbml_str.encode()),
@@ -449,16 +169,11 @@ def download_sbml(ode_id: int):
 
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/sympy")
 def download_sympy(ode_id: int):
-    """
-    Export ODEs as a SymPy .py file via MIRA's OdeModel.
-    Uses the same OdeModel construction as _ode_str_to_latex_lines so the
-    output is consistent with what is displayed in the UI.
-    """
-    with Session() as session:
-        tm = _get_template_model_for_ode(session, ode_id)
+    """Export ODEs as a SymPy .py file"""
+    tm = queries.get_template_model_by_ode_id(get_db_client(), ode_id)
 
     if tm is None:
-        abort(404, description=f"No TemplateModel found for ode_id={ode_id}")
+        abort(404, description=f"No TemplateModel found for ode id {ode_id}")
 
     try:
         tm.time = Time(name="t", units=None)
@@ -482,10 +197,9 @@ def download_sympy(ode_id: int):
             ode_pairs.append((str(kinetics), ""))
 
     except Exception:
-        logger.exception("SymPy export failed for ode_id=%s", ode_id)
-        abort(500, description="SymPy ODE export failed — see server logs.")
+        logger.exception(f"SymPy export failed for ode_id={ode_id}")
+        abort(500, description="SymPy ODE export failed - see server logs.")
 
-    # ── Build the .py file ────────────────────────────────────────────────────
     lines = [
         "from sympy import *",
         "",
@@ -493,8 +207,6 @@ def download_sympy(ode_id: int):
 
     # Declare all symbols that appear across lhs + rhs
     all_symbols: set[str] = set()
-    import re
-    symbol_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
     skip = {"Derivative", "Function", "Symbol", "symbols", "t"}
     for lhs, rhs in ode_pairs:
         for token in symbol_re.findall(lhs + " " + rhs):
@@ -503,7 +215,9 @@ def download_sympy(ode_id: int):
 
     if all_symbols:
         lines.append("# Declare symbols")
-        lines.append(f"{', '.join(sorted(all_symbols))} = symbols('{' '.join(sorted(all_symbols))}')")
+        lines.append(
+            f"{', '.join(sorted(all_symbols))} = symbols('{' '.join(sorted(all_symbols))}')"
+        )
         lines.append("")
 
     for lhs, rhs in ode_pairs:
@@ -529,4 +243,3 @@ def download_sympy(ode_id: int):
         as_attachment=True,
         download_name=f"model_{ode_id}.py",
     )
-

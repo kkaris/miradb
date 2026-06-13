@@ -217,10 +217,10 @@
         }
 
         /* ── Method pills ── */
-        .pill-0 { background:#dbeafe; color:#1d4ed8; }
-        .pill-1 { background:#ede9fe; color:#6d28d9; }
-        .pill-2 { background:#d1fae5; color:#065f46; }
-        .pill-3 { background:#fef3c7; color:#92400e; }
+        .pill-marker { background:#dbeafe; color:#1d4ed8; }
+        .pill-mineru_image { background:#ede9fe; color:#6d28d9; }
+        .pill-mineru_text { background:#d1fae5; color:#065f46; }
+        .pill-xml_extraction { background:#fef3c7; color:#92400e; }
 
         /* ── Grid ── */
         #ep-grid {
@@ -375,11 +375,9 @@ const summaryPendingCards = new Map();
 let summaryInFlight = 0;
 
 /* ════════════════════════════════════════════════════════════
-   Extraction method priority for summary cards
-   extraction_method values: 0=Marker, 1=MinerU Image, 2=MinerU Text, 3=XML
-   Priority: Marker > MinerU Text > XML > MinerU Image
+   Extraction method priority for summary cards (from extraction_methods.json)
 ════════════════════════════════════════════════════════════ */
-const METHOD_PRIORITY = [0, 2, 3, 1];
+const METHOD_PRIORITY = {{ extraction_method_priority | tojson }};
 
 function pickBestModel(models) {
     if (!models || !models.length) return null;
@@ -554,6 +552,10 @@ function setupLazySummaryCards(grid) {
 ════════════════════════════════════════════════════════════ */
 function renderGrid() {
     const grid = document.getElementById('ep-grid');
+    if (!allEpidemics.length) {
+        grid.innerHTML = '<p class="text-muted small text-center py-5 w-100">No models found.</p>';
+        return;
+    }
     grid.innerHTML = allEpidemics.map(ep => buildSummaryCard(ep)).join('');
 
     setupLazySummaryCards(grid);
@@ -595,7 +597,8 @@ async function loadSummaryCard(pmid) {
         const models = await resp.json();
 
         if (!models.length) {
-            container.innerHTML = '<p class="text-muted small text-center py-2">No models stored.</p>';
+            const card = container.closest('.ep-summary-card');
+            if (card) card.remove();
             return true;
         }
 

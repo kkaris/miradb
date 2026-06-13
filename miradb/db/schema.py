@@ -18,10 +18,8 @@ def _now() -> datetime:
 Base = declarative_base()
 
 class EpiTable:
-    """
-    Base class that tags ORM classes as owned by EpiModelManager
-    to auto-discover tables via mapper registry.
-    """
+    """Base class for all tables in the MIRA Database"""
+
 
 class TextRef(Base, EpiTable):
     __tablename__ = 'text_references'
@@ -35,15 +33,17 @@ class TextRef(Base, EpiTable):
     journal = Column(String, nullable=True)
     year = Column(Integer, nullable=True)
     keywords = Column(ARRAY(String), nullable=True)
-
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
-
-    text_contents = relationship("TextContent", back_populates="text_ref_obj", cascade="all, delete-orphan")
+    text_contents = relationship(
+        "TextContent",
+        back_populates="text_ref_obj",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<TextRef(id='{self.id}', pmid='{self.pmid}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -54,25 +54,32 @@ class TextRef(Base, EpiTable):
             'title': self.title,
             'journal': self.journal,
             'year': self.year,
-            'keywords': self.keywords, 
+            'keywords': self.keywords,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
-    
+
 
 class ExtractionMethod(Base, EpiTable):
     __tablename__ = 'extraction_method'
 
-    id = Column(Integer, primary_key=True) 
-    extraction_method = Column(String, nullable=False) # {"mineru_image", "mineru_text", "marker"}
+    id = Column(Integer, primary_key=True)
+    extraction_method = Column(String, nullable=False)
     extraction_method_desc = Column(String, nullable=True)
-
-    text_ref = relationship("TextContent", back_populates="extraction_method_obj", cascade="all, delete-orphan")
-    ode_ref = relationship("ODEs", back_populates="extraction_method_obj", cascade="all, delete-orphan")
+    text_ref = relationship(
+        "TextContent",
+        back_populates="extraction_method_obj",
+        cascade="all, delete-orphan",
+    )
+    ode_ref = relationship(
+        "ODEs",
+        back_populates="extraction_method_obj",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<ExtractionMethod(id='{self.id}', extraction_method='{self.extraction_method}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -84,27 +91,38 @@ class ExtractionMethod(Base, EpiTable):
 class TextContent(Base, EpiTable):
     __tablename__ = 'text_contents'
 
-    id = Column(Integer, primary_key=True) 
-    text_ref = Column(Integer, ForeignKey('text_references.id', ondelete="CASCADE"), nullable=False)
+    id = Column(Integer, primary_key=True)
+    text_ref = Column(
+        Integer,
+        ForeignKey("text_references.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     folder_path = Column(String, nullable=False)
-    extraction_method_id = Column(Integer, ForeignKey('extraction_method.id'), nullable=False)
+    extraction_method_id = Column(
+        Integer, ForeignKey("extraction_method.id"), nullable=False
+    )
     extracted_info_path = Column(String, nullable=False)
-
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
-
     text_ref_obj = relationship("TextRef", back_populates="text_contents")
-    extraction_method_obj = relationship("ExtractionMethod", back_populates="text_ref")
-
-    odes = relationship("ODEs", back_populates="text_con_obj", cascade="all, delete-orphan")
+    extraction_method_obj = relationship(
+        "ExtractionMethod", back_populates="text_ref"
+    )
+    odes = relationship(
+        "ODEs", back_populates="text_con_obj", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
-        UniqueConstraint('text_ref', 'extraction_method_id', name='uq_text_ref_extraction_method'),
+        UniqueConstraint(
+            'text_ref',
+            'extraction_method_id',
+            name='uq_text_ref_extraction_method'
+        ),
     )
 
     def __repr__(self):
         return f"<TextContent(id='{self.id}', text_ref='{self.text_ref}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -121,16 +139,24 @@ class ODEs(Base, EpiTable):
     __tablename__ = 'ode_expressions'
 
     id = Column(Integer, primary_key=True)
-    txt_content_ref = Column(Integer, ForeignKey('text_contents.id', ondelete="CASCADE") ,nullable=False)
+    txt_content_ref = Column(
+        Integer,
+        ForeignKey("text_contents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     ode = Column(String, nullable=False)
     corrected_ode = Column(String, nullable=True)
-    extraction_method_id = Column(Integer, ForeignKey('extraction_method.id'), nullable=False)
-
+    extraction_method_id = Column(
+        Integer, ForeignKey("extraction_method.id"), nullable=False
+    )
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
-
-    mira_model = relationship("MiraModel", back_populates="ode_obj", cascade="all, delete-orphan")
-    extraction_method_obj = relationship("ExtractionMethod", back_populates="ode_ref")
+    mira_model = relationship(
+        "MiraModel", back_populates="ode_obj", cascade="all, delete-orphan"
+    )
+    extraction_method_obj = relationship(
+        "ExtractionMethod", back_populates="ode_ref"
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -144,7 +170,7 @@ class ODEs(Base, EpiTable):
 
     def __repr__(self):
         return f"<ODEs(id='{self.id}', ode='{self.ode}')>"
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -161,22 +187,24 @@ class MiraModel(Base, EpiTable):
     __tablename__ = 'mira_template_models'
 
     id = Column(Integer, primary_key=True)
-    ode_ref = Column(Integer, ForeignKey('ode_expressions.id', ondelete="CASCADE"), nullable=False)
+    ode_ref = Column(
+        Integer,
+        ForeignKey("ode_expressions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     grounded_concepts = Column(JSON, nullable=False)
     mira_template_model = Column(JSON, nullable=True)
-
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
-
     ode_obj = relationship("ODEs", back_populates="mira_model")
 
     def __repr__(self):
         return f"<MiraModel(id='{self.id}', template_model='{self.mira_template_model}')>"
-    
+
     __table_args__ = (
     UniqueConstraint('ode_ref', name='uq_ode_ref'),
 )
-    
+
     def to_dict(self):
         return {
             'id': self.id,
