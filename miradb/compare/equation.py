@@ -55,6 +55,27 @@ def parse_ode_string(ode_str: str) -> dict:
         rhs_map[var_name] = rhs
     return rhs_map
 
+def compute_jacc(rhs1: set, rhs2: set):
+    """Compute the Jaccard index between two sets.
+
+    Parameters
+    ----------
+    set1 :
+        First set.
+    set2 :
+        Second set. 
+    
+Returns
+    -------
+    :
+        Jaccard index (float).
+    """
+    roles1, roles2 = set(rhs1), set(rhs2)
+    intersection = roles1 & roles2
+    union = roles1 | roles2
+    score = len(intersection) / len(union) if union else 1.0
+
+    return score, intersection
 
 def compartment_jaccard(
     rhs1: dict, rhs2: dict, mismatch_threshold: float = 0.5
@@ -76,10 +97,8 @@ def compartment_jaccard(
         Dictionary with Jaccard score, mismatch flag, shared/unique
         compartments, and aligned rhs2.
     """
+    score, intersection = compute_jacc(rhs1, rhs2)
     roles1, roles2 = set(rhs1), set(rhs2)
-    intersection = roles1 & roles2
-    union = roles1 | roles2
-    score = len(intersection) / len(union) if union else 1.0
     r1_only = sorted(roles1 - roles2)
     r2_only = sorted(roles2 - roles1)
 
@@ -87,22 +106,26 @@ def compartment_jaccard(
     for comp1 in r1_only:
         for comp2 in r2_only:
             ratio = fuzz.ratio(comp1, comp2)
-            if ratio > 80 and comp1 not in subs.values():
+            # Need to decide on a threshold for considering compartments 
+            # similar enough to align.
+            if ratio > 60 and comp1 not in subs.values():
                 subs[comp2] = comp1
                 break
 
     rhs2_aligned = rhs2
     if subs:
-        rhs2_aligned = {}
         t = sympy.Symbol("t")
+
+        func_subs = {
+            sympy.Function(old_comp)(t): sympy.Function(new_comp)(t)
+            for old_comp, new_comp in subs.items()
+        }
+
+        rhs2_aligned = {}
         for comp, expr in rhs2.items():
-            new_comp = subs.get(comp, comp)
-            if comp in subs:
-                old_sym = sympy.Function(comp)
-                new_sym = sympy.Function(subs[comp])
-                rhs2_aligned[new_comp] = expr.subs(old_sym(t), new_sym(t))
-            else:
-                rhs2_aligned[new_comp] = expr
+            new_key = subs.get(comp, comp) 
+            rhs2_aligned[new_key] = expr.subs(func_subs) 
+        score, intersection = compute_jacc(rhs1, rhs2_aligned)
 
     return {
         "jaccard": score,
@@ -544,11 +567,13 @@ def compare_models(ode_str1: str, ode_str2: str) -> dict:
     rhs1 = parse_ode_string(ode_str1)
     rhs2 = parse_ode_string(ode_str2)
 
-    state_vars = set(rhs1.keys()) | set(rhs2.keys())
-    params1 = get_params(rhs1, state_vars)
-    params2 = get_params(rhs2, state_vars)
     result = compartment_jaccard(rhs1, rhs2)
     rhs2_aligned = result.get("rhs2_aligned", rhs2)
+
+    state_vars = set(rhs1.keys()) | set(rhs2_aligned.keys())
+    params1 = get_params(rhs1, state_vars)
+    params2 = get_params(rhs2_aligned, state_vars)
+
     if len(params1) <= len(params2):
         canon1, param_map = build_param_map_from_rhs(rhs1, state_vars)
         canon2, _ = align_param_map(rhs2_aligned, param_map, canon1, state_vars)
