@@ -49,8 +49,11 @@ def generate_report(report: dict, e1: int, pmid: str):
     for role, scores in ted["per_compartment"].items():
         report_ted += f"    d({role})/dt  raw={scores['raw']}, normalized={scores['normalized']:.4f}"
 
+    combined = 0.2 * cj['jaccard'] + 0.5 * cj['jaccard'] * tj['aggregate'] \
+        + 0.3 * cj['jaccard'] * (1- agg['normalized'])
+
     with open(progress_file, 'a') as f:
-        f.write(f"{pmid};{e1};{report_cj};{report_tj};{report_ted}\n")
+        f.write(f"{pmid};{e1};{combined};{report_cj};{report_tj};{report_ted}\n")
 
 def generate_score_only_report(report: dict, e1: int, pmid: str):
     """
@@ -75,8 +78,11 @@ def generate_score_only_report(report: dict, e1: int, pmid: str):
     agg = ted["aggregate_per_compartment"]
     report_ted = f"{1 - agg['normalized']:.4f} "
 
+    combined = 0.2 * float(report_cj) + 0.5 * float(report_cj) * float(report_tj) \
+        + 0.3 * float(report_cj) * float(report_ted)
+
     with open(progress_file, 'a') as f:
-        f.write(f"{pmid};{e1};{report_cj};{report_tj};{report_ted}\n")
+        f.write(f"{pmid};{e1};{report_cj};{report_tj};{report_ted};{combined}\n")
 
 
 if __name__ == "__main__":
