@@ -8,6 +8,7 @@ import pandas as pd
 import pystow
 import tqdm
 import traceback
+from datetime import datetime
 
 from mira.openai_utility import OpenAIClient
 from mira.sources.sympy_ode.paper_extraction import \
@@ -24,10 +25,21 @@ POSITIVE_PAPERS_PATH = Path(
 
 BASE = pystow.module("mira", "paper_extraction")
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s [%(levelname)s] %(message)s")
+now = datetime.now()
+
+logdump_file = f'app_{now.strftime("%Y-%m-%d-%H-%M-%S")}.log'
+logging.basicConfig(filename=logdump_file,
+                    filemode='a', 
+                    level=logging.INFO,
+                    format="%(asctime)s [%(levelname)s] %(message)s",
+                    force=True)
+
 logger = logging.getLogger(__name__)
 
+logger.info("Handlers:", logging.root.handlers)
+for h in logging.root.handlers:
+    if hasattr(h, 'baseFilename'):
+        logger.info("Log file path:", h.baseFilename)
 
 def result_to_intermediates(result):
     """Map a mira PipelineResult to the flat intermediates dict we persist.
@@ -41,7 +53,8 @@ def result_to_intermediates(result):
         if grounding is not None and grounding.concepts:
             concepts = {
                 k: v if isinstance(v, dict) else v.to_json()
-                if hasattr(v, "to_json") else ValueError(f"Unexpected concept type: {type(v)}")
+                if hasattr(v, "to_json") else ValueError(f"Unexpected \
+                                                         concept type: {type(v)}")
                 for k, v in grounding.concepts.items()
             }
 
@@ -92,7 +105,7 @@ def main():
     client = OpenAIClient(model="gpt-5.4-mini", temperature=0.0)
 
     # modify based on preferred settings
-    extractor = "mineru"  # options: "mineru" or "marker" or "xml"
+    extractor = "xml"  # options: "mineru" or "marker" or "xml"
     extraction_method = "text"  # options: "text" or "image"
 
     # Canonical extraction-method folder name that populate_db.py reads (see
@@ -105,7 +118,7 @@ def main():
     output_directory = BASE.join(folder_name)
     output_directory.mkdir(parents=True, exist_ok=True)
     progress_file = output_directory / "extraction_progress.csv"
-    print(f"Saving progress to {progress_file}")
+    logger.info(f"Saving progress to {progress_file}")
 
     pmid_to_download_mapping = get_pmid_pmc_download_mapping()
 
@@ -121,7 +134,7 @@ def main():
         pmid = str(row["PMID"])
         # Skip if already processed
         if pmid in processed_pmids:
-            logger.info(f"PMID {pmid} already attempted, skipping...")
+            logger.info(f"\n\n#{idx} PMID {pmid} already attempted, skipping...\n")
             continue
         try:
             logger.info(f"#{idx} - Processing PMID {pmid}...")
@@ -149,19 +162,22 @@ def main():
                 f.write(f"{pmid};success;\n")
 
         except Exception as e:
-            logger.warning(f"Failed to extract model for PMID {pmid}: {e}")
+            logger.warning(f"Failed to extract model for PMID {pmid}: \
+                           {type(e).__name__}")
             with open(progress_file, 'a') as f:
                 f.write(f"{pmid};failed;{type(e).__name__}:{str(e)}\n")
             continue
         finally:
             gc.collect()
-        break
 
-    llm_settings_file = output_directory / "llm_settings.txt"
+    ls_filename = f"llm_settings_{now.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+    llm_settings_file = output_directory / ls_filename
+
     client.save_client_usage(filepath=llm_settings_file)
-    logger.info(f"Saved LLM usage settings to {llm_settings_file}")
+    with open(llm_settings_file, "a") as f:
+        f.write(f"\n Log dump filename: {logdump_file}")
 
-    client.close()
+    logger.info(f"Saved LLM usage settings to {llm_settings_file}")
 
 if __name__ == "__main__":
     main()

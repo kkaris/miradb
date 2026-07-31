@@ -105,7 +105,7 @@ def compartment_jaccard(
     subs = {}
     for comp1 in r1_only:
         for comp2 in r2_only:
-            ratio = fuzz.ratio(comp1, comp2)
+            ratio = fuzz.ratio(comp1.lower(), comp2.lower())
             # Need to decide on a threshold for considering compartments 
             # similar enough to align.
             if ratio > 60 and comp1 not in subs.values():

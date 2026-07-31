@@ -12,7 +12,7 @@ from miradb.compare.equation import compare_models
 logger = logging.getLogger('benchmark.compare')
 
 
-def generate_report(report: dict, e1: int, pmid: str):
+def generate_report(report: dict, e1: int, pmid: str, progress_file_folder: Path, progress_filename: str):
     """Generate, append a detailed model comparison report to the progress file
 
     Parameters
@@ -52,10 +52,12 @@ def generate_report(report: dict, e1: int, pmid: str):
     combined = 0.2 * cj['jaccard'] + 0.5 * cj['jaccard'] * tj['aggregate'] \
         + 0.3 * cj['jaccard'] * (1- agg['normalized'])
 
+    progress_file = progress_file_folder / f"{progress_filename}_detailed.csv"
     with open(progress_file, 'a') as f:
         f.write(f"{pmid};{e1};{combined};{report_cj};{report_tj};{report_ted}\n")
+    logger.info(f"Saved progress to {progress_file}")
 
-def generate_score_only_report(report: dict, e1: int, pmid: str):
+def generate_score_only_report(report: dict, e1: int, pmid: str, progress_file_folder: Path, progress_filename: str):
     """
     Generate a score-only report for a model comparison and append it to the progress file.
 
@@ -81,13 +83,15 @@ def generate_score_only_report(report: dict, e1: int, pmid: str):
     combined = 0.2 * float(report_cj) + 0.5 * float(report_cj) * float(report_tj) \
         + 0.3 * float(report_cj) * float(report_ted)
 
+    progress_file = progress_file_folder / f"{progress_filename}_score.csv"
     with open(progress_file, 'a') as f:
         f.write(f"{pmid};{e1};{report_cj};{report_tj};{report_ted};{combined}\n")
+    logger.info(f"Saved progress to {progress_file}")
 
 
 if __name__ == "__main__":
-    progress_file = Path("results/report_score.csv")
-    print(f"Saving progress to {progress_file}")
+    progress_file_folder = Path("results")
+    progress_filename = "report"
 
     client = get_client("primary")
     gold_standard = pd.read_csv("resources/eqs_list.tsv", sep="\t")
@@ -95,36 +99,39 @@ if __name__ == "__main__":
     for idx in range(len(gold_standard)):
         gold_pmid = gold_standard.iloc[idx]["pmid"]
         if np.isnan(gold_pmid):
-            print(f"Skipping row with missing PMID.")
+            logger.info(f"Skipping row with missing PMID.")
             continue
 
         gold_standard_odes = gold_standard.iloc[idx]["corrected_sympy"]
-        if gold_standard_odes == "":
-            print(
-                f"No gold standard ODEs provided for PMID {gold_pmid}. Skipping."
-            )
-            continue
 
         ode_rows = queries.list_odes_for_pmid(client, str(int(gold_pmid)))
         if not ode_rows:
-            print(f"PMID {gold_pmid} not found in text_references table.")
+            logger.info(f"PMID {gold_pmid} not found in text_references table.")
             continue
 
         for row in ode_rows:
             sympy_src = row["corrected_ode"] or row["ode"]
             if not sympy_src:
                 continue
+            if "odes = []" in sympy_src:
+                logger.info(f"PMID {gold_pmid} - No ODEs extracted. Skipping.")
+                continue
             try:
                 comparison_report = compare_models(
                     gold_standard_odes, sympy_src
                 )
             except Exception as e:
-                print(
+                logger.info(
                     f"Error occurred while comparing models for PMID {gold_pmid}: {e}"
                 )
                 continue
             generate_score_only_report(
-                comparison_report, row["extraction_method_id"], gold_pmid
+                comparison_report, row["extraction_method_id"], gold_pmid,
+                progress_file_folder, progress_filename
             )
             # OR - For detailed report:
-            # generate_report(report, row["extraction_method_id"], pmid)
+            # generate_report(
+            #     comparison_report, row["extraction_method_id"], gold_pmid,
+            #     progress_file_folder, progress_filename
+            # )
+        logger.info(f"Successfully processed PMID {idx} : {gold_pmid}")
