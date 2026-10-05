@@ -294,4 +294,6 @@ TABLE_ORDER = [
     "text_contents",
     "ode_expressions",
     "mira_template_models",
+    "scenarios",
+    "scenario_parameters",
 ]

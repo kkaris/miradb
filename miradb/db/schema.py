@@ -1,7 +1,7 @@
 import logging
 
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, CheckConstraint, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, Float, String, CheckConstraint, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSON, ARRAY
 
@@ -76,6 +76,16 @@ class ExtractionMethod(Base, EpiTable):
         back_populates="extraction_method_obj",
         cascade="all, delete-orphan",
     )
+    scenario_ref = relationship(
+        "Scenario",
+        back_populates="extraction_method_obj",
+        cascade="all, delete-orphan",
+    )
+    scenario_parameter_ref = relationship(
+        "ScenarioParameter",
+        back_populates="extraction_method_obj",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<ExtractionMethod(id='{self.id}', extraction_method='{self.extraction_method}')>"
@@ -110,6 +120,9 @@ class TextContent(Base, EpiTable):
     )
     odes = relationship(
         "ODEs", back_populates="text_con_obj", cascade="all, delete-orphan"
+    )
+    scenarios = relationship(
+        "Scenario", back_populates="text_con_obj", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -197,6 +210,7 @@ class MiraModel(Base, EpiTable):
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
     ode_obj = relationship("ODEs", back_populates="mira_model")
+    scenarios = relationship("Scenario", back_populates="mira_model_obj")
 
     def __repr__(self):
         return f"<MiraModel(id='{self.id}', template_model='{self.mira_template_model}')>"
@@ -211,6 +225,128 @@ class MiraModel(Base, EpiTable):
             'ode_ref': self.ode_ref,
             'grounded_concepts': self.grounded_concepts,
             'mira_template_model': self.mira_template_model,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class Scenario(Base, EpiTable):
+    __tablename__ = 'scenarios'
+
+    id = Column(Integer, primary_key=True)
+    txt_content_ref = Column(
+        Integer,
+        ForeignKey("text_contents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Template model whose parameter names were used during extraction, if any
+    mira_model_ref = Column(
+        Integer,
+        ForeignKey("mira_template_models.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    extraction_method_id = Column(
+        Integer, ForeignKey("extraction_method.id"), nullable=False
+    )
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    scenarios_path = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+    text_con_obj = relationship("TextContent", back_populates="scenarios")
+    mira_model_obj = relationship("MiraModel", back_populates="scenarios")
+    extraction_method_obj = relationship(
+        "ExtractionMethod", back_populates="scenario_ref"
+    )
+    parameters = relationship(
+        "ScenarioParameter",
+        back_populates="scenario_obj",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            'txt_content_ref',
+            'extraction_method_id',
+            'name',
+            name='uq_scenario_txt_content_method_name'
+        ),
+    )
+
+    def __repr__(self):
+        return f"<Scenario(id='{self.id}', name='{self.name}')>"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'txt_content_ref': self.txt_content_ref,
+            'mira_model_ref': self.mira_model_ref,
+            'extraction_method_id': self.extraction_method_id,
+            'name': self.name,
+            'description': self.description,
+            'scenarios_path': self.scenarios_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ScenarioParameter(Base, EpiTable):
+    __tablename__ = 'scenario_parameters'
+
+    id = Column(Integer, primary_key=True)
+    scenario_ref = Column(
+        Integer,
+        ForeignKey("scenarios.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    extraction_method_id = Column(
+        Integer, ForeignKey("extraction_method.id"), nullable=False
+    )
+    name = Column(String, nullable=False)
+    display_name = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    value = Column(Float, nullable=True)
+    # Unevaluated value expression, e.g. '1/5.2'
+    value_expression = Column(String, nullable=True)
+    units = Column(String, nullable=True)
+    # e.g. {"type": "Uniform1", "parameters": {"minimum": 0.1, "maximum": 0.5}}
+    distribution = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+    scenario_obj = relationship("Scenario", back_populates="parameters")
+    extraction_method_obj = relationship(
+        "ExtractionMethod", back_populates="scenario_parameter_ref"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            'scenario_ref',
+            'extraction_method_id',
+            'name',
+            name='uq_scenario_parameter_method_name'
+        ),
+        CheckConstraint(
+            "value IS NOT NULL OR value_expression IS NOT NULL "
+            "OR distribution IS NOT NULL",
+            name="ck_parameter_has_value"
+        ),
+    )
+
+    def __repr__(self):
+        return f"<ScenarioParameter(id='{self.id}', name='{self.name}', value='{self.value}')>"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'scenario_ref': self.scenario_ref,
+            'extraction_method_id': self.extraction_method_id,
+            'name': self.name,
+            'display_name': self.display_name,
+            'description': self.description,
+            'value': self.value,
+            'value_expression': self.value_expression,
+            'units': self.units,
+            'distribution': self.distribution,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
