@@ -58,8 +58,10 @@ def result_to_intermediates(result):
     }
 
 
-def save_with_intermediates(template_model, result, pmid, folder_name):
-    """Save both intermediate extraction results and the final model.
+def save_with_intermediates(template_model, result, scenarios, pmid,
+                            folder_name):
+    """Save the intermediate extraction results, the final model and the
+    extracted scenarios.
 
     Parameters
     ----------
@@ -67,6 +69,10 @@ def save_with_intermediates(template_model, result, pmid, folder_name):
         The extracted template model.
     result :
         The mira PipelineResult from get_template_model_from_pmid.
+    scenarios :
+        The list of mira Scenarios from get_template_model_from_pmid. Saved
+        even when empty, so a paper with no parameter tables can be told
+        apart from one that was not processed.
     pmid :
         PubMed ID.
     folder_name :
@@ -80,20 +86,26 @@ def save_with_intermediates(template_model, result, pmid, folder_name):
         json.dump(intermediates, f, indent=2)
     with open(out_dir / f"{pmid}.json", 'w') as f:
         json.dump(template_model.to_json(), f, indent=2)
+    # Unevaluated parameter values such as 1/5.2 are sympy expressions;
+    # default=str writes them as strings, e.g. "1/5.2".
+    with open(out_dir / f"{pmid}_scenarios.json", 'w') as f:
+        json.dump([s.to_json() for s in scenarios], f, indent=2, default=str)
 
 
 def main():
     # Load the list of PMIDs for papers that were classified as relevant
     # (positive) by the trained model.
 
-    df = pd.read_csv(POSITIVE_PAPERS_PATH, sep='\t')
+    # df = pd.read_csv(POSITIVE_PAPERS_PATH, sep='\t')
+    df = pd.read_csv("/Users/mohbe.r/Documents/CODE/NEU/mira/mira/sources/sympy_ode/paper_relevance_ranking/extracted_papers/negative_papers_v2.tsv", sep='\t')
+    # df = pd.read_csv("/Users/mohbe.r/Documents/CODE/NEU/miradb/big_benchmark.csv", sep=',')
     
     # Initialize the OpenAI client with the desired model and temperature. 
     # Temperature is set to 0.0 for deterministic outputs.
     client = OpenAIClient(model="gpt-5.4-mini", temperature=0.0)
 
     # modify based on preferred settings
-    extractor = "mineru"  # options: "mineru" or "marker" or "xml"
+    extractor = "xml"  # options: "mineru" or "marker" or "xml"
     extraction_method = "text"  # options: "text" or "image"
 
     # Canonical extraction-method folder name that populate_db.py reads (see
@@ -118,9 +130,10 @@ def main():
         processed_pmids = set(progress_df['pmid'].astype(str))
         logger.info(f"Found {len(processed_pmids)} already processed PMIDs")
 
-    # for idx, row in tqdm.tqdm(df.iterrows(), total=len(df)):
-    #     pmid = str(row["PMID"])
-    for idx, pmid in enumerate(pmid_list):
+    for idx, row in tqdm.tqdm(df.iterrows(), total=len(df)):
+        pmid = str(row["PMID"])
+        # pmid = str(row["pmid"])
+    # for idx, pmid in enumerate(pmid_list):
         # Skip if already processed
         pmid = str(pmid)
         if pmid in processed_pmids:
@@ -128,7 +141,7 @@ def main():
             continue
         try:
             logger.info(f"#{idx} - Processing PMID {pmid}...")
-            tm, result = get_template_model_from_pmid(
+            tm, result, scenarios = get_template_model_from_pmid(
                 pmid=pmid, ode_extraction_method=extraction_method,
                 extractor=extractor,
                 pmid_to_download_mapping=pmid_to_download_mapping,
@@ -144,9 +157,10 @@ def main():
             
             # Create OdeModel only for validation, then release
             om = OdeModel(Model(tm), initialized=True)
-            save_with_intermediates(tm, result, pmid, folder_name)
+            save_with_intermediates(tm, result, scenarios, pmid, folder_name)
+            logger.info(f"PMID {pmid} - Saved {len(scenarios)} scenario(s).")
             # Explicitly cleanup. Memory usage gets high if there are many papers.
-            del om, tm
+            del om, tm, scenarios
 
             with open(progress_file, 'a') as f:
                 f.write(f"{pmid};success;\n")
@@ -171,7 +185,9 @@ def main():
 
 if __name__ == "__main__":
     now = datetime.now()
-    logdump_file = f'app_{now.strftime("%Y-%m-%d-%H-%M-%S")}.log'
+    log_dir = Path(__file__).resolve().parent.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logdump_file = log_dir / f'app_{now.strftime("%Y-%m-%d-%H-%M-%S")}.log'
     logging.basicConfig(filename=logdump_file,
                         filemode='a',
                         level=logging.INFO,

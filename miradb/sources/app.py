@@ -37,7 +37,7 @@ def index():
     help="Address to bind the server to.",
 )
 @click.option(
-    "--port", default=5000, show_default=True, help="Port to run the server on."
+    "--port", default=5001, show_default=True, help="Port to run the server on."
 )
 @click.option(
     "--debug/--no-debug",

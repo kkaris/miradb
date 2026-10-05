@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -169,6 +170,151 @@ def ingest_extraction_method(
             continue
 
 
+def scenario_parameter_fields(parameter: dict) -> dict | None:
+    """Map a MIRA Parameter JSON to ``add_scenario_parameter`` arguments.
+
+    Parameters
+    ----------
+    parameter :
+        One entry of a scenario's ``parameters`` list, as written by
+        ``Parameter.to_json()``.
+
+    Returns
+    -------
+    :
+        Keyword arguments for ``queries.add_scenario_parameter``, or ``None``
+        if the parameter has no value, value expression or distribution.
+    """
+    value = parameter.get("value")
+    value_expression = None
+    if isinstance(value, str):
+        # Unevaluated expressions such as "1/5.2" are saved as strings
+        value_expression, value = value, None
+    elif isinstance(value, float) and math.isnan(value):
+        value = None
+
+    distribution = parameter.get("distribution") or None
+    if value is None and value_expression is None and distribution is None:
+        return None
+
+    units = parameter.get("units")
+    return {
+        "name": parameter["name"],
+        "value": value,
+        "value_expression": value_expression,
+        "display_name": parameter.get("display_name"),
+        "description": parameter.get("description"),
+        "units": units.get("expression") if isinstance(units, dict) else None,
+        "distribution": distribution,
+    }
+
+
+def ingest_scenarios(
+    client: MiraDatabaseClient,
+    folder_names: list[str],
+    method: str,
+    model_path: Path = MODEL_PATH,
+):
+    """Ingest the scenarios saved by generate_template_models.py.
+
+    Reads ``<pmid>/tm/<method>/<pmid>_scenarios.json`` for each PMID. Each
+    scenario is linked to the paper's text content for this extraction method,
+    so ``ingest_extraction_method`` must have been run for the method first.
+    Scenarios that are already in the database are skipped, so this is safe
+    to re-run.
+
+    Parameters
+    ----------
+    client :
+        MiraDatabaseClient instance.
+    folder_names :
+        PMID folder names discovered under ``model_path``.
+    method :
+        One of ``"xml_extraction"``, ``"marker"``, ``"mineru_image"``, or
+        ``"mineru_text"``.
+    model_path :
+        Root directory that contains per-PMID subfolders, by default
+        ``MODEL_PATH``.
+    """
+    extraction_id = queries.get_extraction_method_id(client, method)
+
+    for pmid in tqdm(folder_names, desc=f"Ingesting scenarios [{method}]"):
+        try:
+            scenarios_file = (
+                model_path / pmid / "tm" / method / f"{pmid}_scenarios.json"
+            )
+            with open(scenarios_file) as f:
+                scenarios = json.load(f)
+            if not scenarios:
+                continue
+
+            # Find the text content this extraction method produced
+            text_ref = queries.get_text_ref(client, pmid)
+            text_contents = (
+                queries.get_text_content(client, text_ref["id"]) or []
+                if text_ref else []
+            )
+            text_content = next(
+                (
+                    tc for tc in text_contents
+                    if tc["extraction_method_id"] == extraction_id
+                ), None
+            )
+            if text_content is None:
+                logger.warning(
+                    f"[{pmid}] No {method} text content found - skipping "
+                    f"scenarios. Run ingest_extraction_method first."
+                )
+                continue
+
+            # Link to the template model the scenarios were named after
+            odes = queries.get_odes(client, text_content["id"])
+            tm = queries.get_tm(client, odes["id"]) if odes else None
+
+            for scenario in scenarios:
+                name = scenario["name"]
+                if queries.get_scenario(
+                    client, text_content["id"], extraction_id, name
+                ):
+                    logger.debug(f"[{pmid}] Scenario '{name}' exists, skipping.")
+                    continue
+
+                scenario_id = queries.add_scenario(
+                    client=client,
+                    txt_content_ref=text_content["id"],
+                    extraction_method_id=extraction_id,
+                    name=name,
+                    description=scenario.get("description"),
+                    mira_model_ref=tm["id"] if tm else None,
+                    scenarios_path=str(scenarios_file),
+                )
+                if scenario_id is None:
+                    continue
+
+                for parameter in scenario.get("parameters", []):
+                    fields = scenario_parameter_fields(parameter)
+                    if fields is None:
+                        logger.debug(
+                            f"[{pmid}] Parameter '{parameter.get('name')}' in "
+                            f"scenario '{name}' has no value - skipping."
+                        )
+                        continue
+                    queries.add_scenario_parameter(
+                        client=client,
+                        scenario_ref=scenario_id,
+                        extraction_method_id=extraction_id,
+                        **fields,
+                    )
+
+        except FileNotFoundError:
+            # No scenarios saved for this PMID under this method
+            logger.debug(f"[{pmid}] No {method} scenarios found, skipping.")
+            continue
+        except Exception:
+            logger.exception(f"[{pmid}] Error during scenario ingestion")
+            continue
+
+
 def update_metadata_from_nxml(
     client: MiraDatabaseClient,
     folder_names: list[str],
@@ -279,6 +425,7 @@ def main():
 
     for method in EXTRACTION_METHODS_INFO:
         ingest_extraction_method(client, folder_names, method["extraction_method"])
+        ingest_scenarios(client, folder_names, method["extraction_method"])
 
     update_metadata_from_nxml(client, folder_names)
 

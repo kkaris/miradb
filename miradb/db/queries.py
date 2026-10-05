@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 
 from sqlalchemy import Text, cast, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,8 @@ from miradb.db.schema import (
     ExtractionMethod,
     MiraModel,
     ODEs,
+    Scenario,
+    ScenarioParameter,
     TextContent,
     TextRef,
 )
@@ -272,6 +275,14 @@ def search_publication_summaries(
     return [_format_publication_summary(row) for row in rows]
 
 
+def _priority_index(method_key: str) -> int:
+    """Return the position of an extraction method in the priority list."""
+    try:
+        return EXTRACTION_METHODS_PRIORITY.index(method_key)
+    except ValueError:
+        return len(EXTRACTION_METHODS_PRIORITY)
+
+
 def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
     """Return converted models for a PMID with LaTeX-rendered equations.
 
@@ -342,14 +353,112 @@ def list_models_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
             }
         )
 
-    def _priority_index(method_key: str) -> int:
-        try:
-            return EXTRACTION_METHODS_PRIORITY.index(method_key)
-        except ValueError:
-            return len(EXTRACTION_METHODS_PRIORITY)
-
     results.sort(key=lambda r: _priority_index(r["extraction_method"]))
     return results
+
+
+def list_scenarios_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
+    """Return the scenarios and their parameters for a PMID, grouped by
+    extraction method.
+
+    Parameters
+    ----------
+    client :
+        An instance of MiraDatabaseClient.
+    pmid :
+        The PubMed ID of the publication.
+
+    Returns
+    -------
+    :
+        A list of dictionaries, one per extraction method that has at least
+        one scenario, ordered by extraction method priority. The dictionary
+        keys are:
+        - extraction_method: Extraction method key (e.g. ``marker``).
+        - method_label: Short display name for the extraction method.
+        - scenarios: List of scenarios in the order they were added, each a
+          dictionary with keys ``id``, ``name``, ``description`` and
+          ``parameters``. Each parameter is a dictionary with keys ``name``,
+          ``display_name``, ``description``, ``value``, ``value_expression``,
+          ``units`` and ``distribution``.
+    """
+    pmid = str(pmid)
+    text_ref = client.query_one(select(TextRef.id).where(TextRef.pmid == pmid))
+    if not text_ref:
+        return []
+
+    stmt = (
+        select(
+            Scenario.id.label("scenario_id"),
+            Scenario.name.label("scenario_name"),
+            Scenario.description.label("scenario_description"),
+            ExtractionMethod.extraction_method,
+            ScenarioParameter.name,
+            ScenarioParameter.display_name,
+            ScenarioParameter.description,
+            ScenarioParameter.value,
+            ScenarioParameter.value_expression,
+            ScenarioParameter.units,
+            ScenarioParameter.distribution,
+        )
+        .join(TextContent, Scenario.txt_content_ref == TextContent.id)
+        .join(
+            ExtractionMethod,
+            Scenario.extraction_method_id == ExtractionMethod.id,
+        )
+        .outerjoin(
+            ScenarioParameter, ScenarioParameter.scenario_ref == Scenario.id
+        )
+        .where(TextContent.text_ref == text_ref["id"])
+        .order_by(Scenario.id, ScenarioParameter.id)
+    )
+
+    by_method: dict[str, dict] = {}
+    scenarios: dict[int, dict] = {}
+    for row in client.query(stmt):
+        method_key = row["extraction_method"]
+        group = by_method.setdefault(
+            method_key,
+            {
+                "extraction_method": method_key,
+                "method_label": EXTRACTION_METHOD_LABELS.get(
+                    method_key, method_key
+                ),
+                "scenarios": [],
+            },
+        )
+        scenario = scenarios.get(row["scenario_id"])
+        if scenario is None:
+            scenario = {
+                "id": row["scenario_id"],
+                "name": row["scenario_name"],
+                "description": row["scenario_description"],
+                "parameters": [],
+            }
+            scenarios[row["scenario_id"]] = scenario
+            group["scenarios"].append(scenario)
+        if row["name"] is None:
+            # Scenario without parameters (outer join)
+            continue
+        value = row["value"]
+        if isinstance(value, float) and math.isnan(value):
+            value = None
+        scenario["parameters"].append(
+            {
+                "name": row["name"],
+                "display_name": row["display_name"],
+                "description": row["description"],
+                "value": value,
+                "value_expression": row["value_expression"],
+                "units": row["units"],
+                "distribution": row["distribution"],
+            }
+        )
+
+    return sorted(
+        by_method.values(),
+        key=lambda g: _priority_index(g["extraction_method"]),
+    )
 
 
 def list_odes_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]:
@@ -1250,6 +1359,561 @@ def remove_tm(client: MiraDatabaseClient, ode_ref: int) -> bool:
         sess.delete(p)
         logger.info(
             f"Deleted MiraModel for ode_ref '{ode_ref}' and all linked rows."
+        )
+        return True
+
+    return client.mutate(_write)
+
+
+def add_scenario(
+    client: MiraDatabaseClient,
+    txt_content_ref: int,
+    extraction_method_id: int,
+    name: str,
+    description: str | None = None,
+    mira_model_ref: int | None = None,
+    scenarios_path: str | None = None,
+) -> int | None:
+    """Add a scenario extracted from a paper to the database.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    txt_content_ref :
+        The ID of the text content that this scenario is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the scenario.
+    name :
+        The name of the scenario, e.g. 'default' or 'lockdown'.
+    description :
+        A description of what distinguishes this scenario.
+    mira_model_ref :
+        The ID of the MIRA template model whose parameter names were used
+        during extraction, if any.
+    scenarios_path :
+        The path to the JSON file the scenario was loaded from.
+
+    Returns
+    -------
+    :
+        The ID of the scenario entry that was added.
+    """
+    try:
+
+        def _write(sess):
+            s = Scenario(
+                txt_content_ref=txt_content_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+                description=description,
+                mira_model_ref=mira_model_ref,
+                scenarios_path=scenarios_path,
+            )
+            sess.add(s)
+            sess.flush()
+            sess.refresh(s)
+            logger.info(
+                f"Registered Scenario '{name}' for txt_content_ref "
+                f"'{txt_content_ref}'."
+            )
+            return s.id
+
+        return client.mutate(_write)
+    except IntegrityError:
+        logger.warning(
+            f"A Scenario '{name}' with txt_content_ref {txt_content_ref} and "
+            f"extraction_method_id {extraction_method_id} already exists."
+        )
+        return None
+
+
+def update_scenario(
+    client: MiraDatabaseClient,
+    txt_content_ref: int,
+    extraction_method_id: int,
+    name: str,
+    description: str | None = None,
+    mira_model_ref: int | None = None,
+    scenarios_path: str | None = None,
+) -> bool:
+    """Update a scenario's information in the database.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    txt_content_ref :
+        The ID of the text content that this scenario is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the scenario.
+    name :
+        The name of the scenario.
+    description :
+        A new description of the scenario.
+    mira_model_ref :
+        A new ID of the MIRA template model linked to this scenario.
+    scenarios_path :
+        A new path to the JSON file the scenario was loaded from.
+
+    Returns
+    -------
+    :
+        True if the scenario entry was found and updated, False if the
+        scenario entry was not found.
+    """
+
+    def _write(sess):
+        s = (
+            sess.query(Scenario)
+            .filter_by(
+                txt_content_ref=txt_content_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+            )
+            .first()
+        )
+        if not s:
+            logger.warning(
+                f"Scenario '{name}' for txt_content_ref '{txt_content_ref}' "
+                f"not found."
+            )
+            return False
+        if description is not None:
+            s.description = description
+        if mira_model_ref is not None:
+            s.mira_model_ref = mira_model_ref
+        if scenarios_path is not None:
+            s.scenarios_path = scenarios_path
+        logger.info(
+            f"Updated Scenario '{name}' for txt_content_ref "
+            f"'{txt_content_ref}'."
+        )
+        return True
+
+    return client.mutate(_write)
+
+
+def get_scenario(
+    client: MiraDatabaseClient,
+    txt_content_ref: int,
+    extraction_method_id: int,
+    name: str,
+) -> dict | None:
+    """Retrieve a scenario by text content ID, extraction method and name.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    txt_content_ref :
+        The ID of the text content that this scenario is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the scenario.
+    name :
+        The name of the scenario.
+
+    Returns
+    -------
+    :
+        A dictionary containing the scenario information if found, or None if
+        not found. Dictionary keys: 'id', 'txt_content_ref', 'mira_model_ref',
+        'extraction_method_id', 'name', 'description', 'scenarios_path',
+        'created_at', 'updated_at'
+    """
+    with client.session() as sess:
+        s = (
+            sess.query(Scenario)
+            .filter_by(
+                txt_content_ref=txt_content_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+            )
+            .first()
+        )
+        return s.to_dict() if s else None
+
+
+def get_scenarios(
+    client: MiraDatabaseClient,
+    txt_content_ref: int,
+    extraction_method_id: int | None = None,
+) -> list[dict]:
+    """Retrieve all scenarios of a paper by text content ID.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    txt_content_ref :
+        The ID of the text content that the scenarios are linked to.
+    extraction_method_id :
+        If given, only return scenarios extracted with this extraction method.
+
+    Returns
+    -------
+    :
+        A list of dictionaries, each containing a scenario's information. See
+        ``get_scenario`` for the dictionary keys.
+    """
+    with client.session() as sess:
+        q = sess.query(Scenario).filter_by(txt_content_ref=txt_content_ref)
+        if extraction_method_id is not None:
+            q = q.filter_by(extraction_method_id=extraction_method_id)
+        return [s.to_dict() for s in q.order_by(Scenario.name).all()]
+
+
+def get_all_scenarios(client: MiraDatabaseClient) -> list[dict]:
+    """Retrieve all scenarios.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+
+    Returns
+    -------
+    :
+        A list of dictionaries, each containing a scenario's information. See
+        ``get_scenario`` for the dictionary keys.
+    """
+    with client.session() as sess:
+        scenarios = (
+            sess.query(Scenario).order_by(Scenario.created_at.desc()).all()
+        )
+        return [s.to_dict() for s in scenarios]
+
+
+def remove_scenario(
+    client: MiraDatabaseClient,
+    txt_content_ref: int,
+    extraction_method_id: int,
+    name: str,
+) -> bool:
+    """Delete a scenario and all FK-linked rows, including its parameters.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    txt_content_ref :
+        The ID of the text content that this scenario is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the scenario.
+    name :
+        The name of the scenario.
+
+    Returns
+    -------
+    :
+        True if the scenario was deleted, False if not found.
+    """
+
+    def _write(sess):
+        s = (
+            sess.query(Scenario)
+            .filter_by(
+                txt_content_ref=txt_content_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+            )
+            .first()
+        )
+        if not s:
+            logger.warning(
+                f"Scenario '{name}' for txt_content_ref '{txt_content_ref}' "
+                f"not found."
+            )
+            return False
+        sess.delete(s)
+        logger.info(
+            f"Deleted Scenario '{name}' for txt_content_ref "
+            f"'{txt_content_ref}' and all linked rows."
+        )
+        return True
+
+    return client.mutate(_write)
+
+
+def add_scenario_parameter(
+    client: MiraDatabaseClient,
+    scenario_ref: int,
+    extraction_method_id: int,
+    name: str,
+    value: float | None = None,
+    value_expression: str | None = None,
+    display_name: str | None = None,
+    description: str | None = None,
+    units: str | None = None,
+    distribution: dict | None = None,
+) -> int | None:
+    """Add a parameter of a scenario to the database.
+
+    At least one of ``value``, ``value_expression`` or ``distribution`` must be
+    given.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    scenario_ref :
+        The ID of the scenario that this parameter is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the parameter.
+    name :
+        The name of the parameter, e.g. 'beta'.
+    value :
+        The numeric value of the parameter.
+    value_expression :
+        The value of the parameter as an unevaluated expression, e.g. '1/5.2'.
+    display_name :
+        The display name of the parameter, e.g. 'β'.
+    description :
+        A description of the parameter.
+    units :
+        The units of the parameter as an expression, e.g. '1/day'.
+    distribution :
+        A dictionary (JSON-convertible) containing the parameter's
+        distribution, e.g. {"type": "Uniform1", "parameters": {...}}.
+
+    Returns
+    -------
+    :
+        The ID of the parameter entry that was added.
+    """
+    try:
+
+        def _write(sess):
+            p = ScenarioParameter(
+                scenario_ref=scenario_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+                value=value,
+                value_expression=value_expression,
+                display_name=display_name,
+                description=description,
+                units=units,
+                distribution=distribution,
+            )
+            sess.add(p)
+            sess.flush()
+            sess.refresh(p)
+            logger.info(
+                f"Registered ScenarioParameter '{name}' for scenario_ref "
+                f"'{scenario_ref}'."
+            )
+            return p.id
+
+        return client.mutate(_write)
+    except IntegrityError:
+        logger.warning(
+            f"Could not add ScenarioParameter '{name}' for scenario_ref "
+            f"{scenario_ref} and extraction_method_id {extraction_method_id}: "
+            f"it already exists or has no value, value_expression or "
+            f"distribution."
+        )
+        return None
+
+
+def update_scenario_parameter(
+    client: MiraDatabaseClient,
+    scenario_ref: int,
+    extraction_method_id: int,
+    name: str,
+    value: float | None = None,
+    value_expression: str | None = None,
+    display_name: str | None = None,
+    description: str | None = None,
+    units: str | None = None,
+    distribution: dict | None = None,
+) -> bool:
+    """Update a scenario parameter's information in the database.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    scenario_ref :
+        The ID of the scenario that this parameter is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the parameter.
+    name :
+        The name of the parameter.
+    value :
+        A new numeric value of the parameter.
+    value_expression :
+        A new value expression of the parameter.
+    display_name :
+        A new display name of the parameter.
+    description :
+        A new description of the parameter.
+    units :
+        New units of the parameter.
+    distribution :
+        A new dictionary (JSON-convertible) containing the parameter's
+        distribution.
+
+    Returns
+    -------
+    :
+        True if the parameter entry was found and updated, False if the
+        parameter entry was not found.
+    """
+
+    def _write(sess):
+        p = (
+            sess.query(ScenarioParameter)
+            .filter_by(
+                scenario_ref=scenario_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+            )
+            .first()
+        )
+        if not p:
+            logger.warning(
+                f"ScenarioParameter '{name}' for scenario_ref "
+                f"'{scenario_ref}' not found."
+            )
+            return False
+        if value is not None:
+            p.value = value
+        if value_expression is not None:
+            p.value_expression = value_expression
+        if display_name is not None:
+            p.display_name = display_name
+        if description is not None:
+            p.description = description
+        if units is not None:
+            p.units = units
+        if distribution is not None:
+            p.distribution = distribution
+        logger.info(
+            f"Updated ScenarioParameter '{name}' for scenario_ref "
+            f"'{scenario_ref}'."
+        )
+        return True
+
+    return client.mutate(_write)
+
+
+def get_scenario_parameter(
+    client: MiraDatabaseClient,
+    scenario_ref: int,
+    extraction_method_id: int,
+    name: str,
+) -> dict | None:
+    """Retrieve a scenario parameter by scenario ID, extraction method and
+    name.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    scenario_ref :
+        The ID of the scenario that this parameter is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the parameter.
+    name :
+        The name of the parameter.
+
+    Returns
+    -------
+    :
+        A dictionary containing the parameter information if found, or None if
+        not found. Dictionary keys: 'id', 'scenario_ref',
+        'extraction_method_id', 'name', 'display_name', 'description',
+        'value', 'value_expression', 'units', 'distribution', 'created_at',
+        'updated_at'
+    """
+    with client.session() as sess:
+        p = (
+            sess.query(ScenarioParameter)
+            .filter_by(
+                scenario_ref=scenario_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+            )
+            .first()
+        )
+        return p.to_dict() if p else None
+
+
+def get_scenario_parameters(
+    client: MiraDatabaseClient,
+    scenario_ref: int,
+    extraction_method_id: int | None = None,
+) -> list[dict]:
+    """Retrieve all parameters of a scenario by scenario ID.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    scenario_ref :
+        The ID of the scenario that the parameters are linked to.
+    extraction_method_id :
+        If given, only return parameters extracted with this extraction
+        method.
+
+    Returns
+    -------
+    :
+        A list of dictionaries, each containing a parameter's information. See
+        ``get_scenario_parameter`` for the dictionary keys.
+    """
+    with client.session() as sess:
+        q = sess.query(ScenarioParameter).filter_by(scenario_ref=scenario_ref)
+        if extraction_method_id is not None:
+            q = q.filter_by(extraction_method_id=extraction_method_id)
+        return [p.to_dict() for p in q.order_by(ScenarioParameter.name).all()]
+
+
+def remove_scenario_parameter(
+    client: MiraDatabaseClient,
+    scenario_ref: int,
+    extraction_method_id: int,
+    name: str,
+) -> bool:
+    """Delete a scenario parameter.
+
+    Parameters
+    ----------
+    client :
+        The database client to use.
+    scenario_ref :
+        The ID of the scenario that this parameter is linked to.
+    extraction_method_id :
+        The ID of the extraction method used to extract the parameter.
+    name :
+        The name of the parameter.
+
+    Returns
+    -------
+    :
+        True if the parameter was deleted, False if not found.
+    """
+
+    def _write(sess):
+        p = (
+            sess.query(ScenarioParameter)
+            .filter_by(
+                scenario_ref=scenario_ref,
+                extraction_method_id=extraction_method_id,
+                name=name,
+            )
+            .first()
+        )
+        if not p:
+            logger.warning(
+                f"ScenarioParameter '{name}' for scenario_ref "
+                f"'{scenario_ref}' not found."
+            )
+            return False
+        sess.delete(p)
+        logger.info(
+            f"Deleted ScenarioParameter '{name}' for scenario_ref "
+            f"'{scenario_ref}'."
         )
         return True
 

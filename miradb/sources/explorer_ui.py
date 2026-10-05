@@ -117,6 +117,43 @@ def get_models_for_pmid(pmid: str):
     return jsonify(results)
 
 
+@explorer_blueprint.route("/api/pmids/<pmid>/scenarios")
+def get_scenarios_for_pmid(pmid: str):
+    """Return the scenarios and parameters for a PMID, grouped by extractor.
+
+    Response format:
+    [
+        {
+            "extraction_method": "marker",
+            "method_label": "Marker Extraction",
+            "scenarios": [
+                {
+                    "id": 1,
+                    "name": "default",
+                    "description": "...",
+                    "parameters": [
+                        {
+                            "name": "beta",
+                            "display_name": "β",
+                            "description": "...",
+                            "value": 0.5,
+                            "value_expression": null,
+                            "units": "1/day",
+                            "distribution": null
+                        },
+                        ...
+                    ]
+                },
+                ...
+            ]
+        },
+        ...
+    ]
+    """
+    results = queries.list_scenarios_for_pmid(get_db_client(), pmid)
+    return jsonify(results)
+
+
 @explorer_blueprint.route("/api/models/<int:ode_id>/download/json")
 def download_json(ode_id: int):
     """Export the given model as a MIRA TemplateModel JSON"""

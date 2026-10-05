@@ -271,6 +271,93 @@
             max-height: 200px;
             cursor: default;
         }
+
+        /* ── Extractor / scenario dropdowns ── */
+        .card-hdr-label {
+            font-size: .62rem;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+            color: #6b7280;
+            font-weight: 600;
+        }
+        .method-select-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            border: none;
+            font-size: .75rem;
+            font-weight: 600;
+            padding: .3rem .65rem;
+            border-radius: 999px;
+            background: #e5e7eb;
+            color: #374151;
+        }
+        .method-select-btn::after { margin-left: .15rem; }
+        .scen-select-btn {
+            font-size: .75rem;
+            font-weight: 600;
+            padding: .25rem .6rem;
+            border: 1px solid #d1d5db;
+            background: #fff;
+            border-radius: .4rem;
+            color: #1e3a5f;
+            font-family: monospace;
+        }
+        .detail-dropdown { font-size: .78rem; }
+        .detail-dropdown .count { color: #9ca3af; font-size: .7rem; margin-left: .75rem; }
+        .detail-dropdown .dropdown-item.active .count { color: #e0e7ff; }
+        .method-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: .4rem;
+            background: #9ca3af;
+        }
+        .dot-marker { background: #1d4ed8; }
+        .dot-mineru_image { background: #6d28d9; }
+        .dot-mineru_text { background: #065f46; }
+        .dot-xml_extraction { background: #92400e; }
+
+        /* ── Scenario parameters ── */
+        .scen-desc {
+            font-size: .75rem;
+            color: #4b5563;
+            padding: .5rem .75rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .param-wrap { max-height: 320px; overflow: auto; }
+        .param-table { font-size: .74rem; margin: 0; }
+        .param-table thead th {
+            position: sticky;
+            top: 0;
+            background: #f9fafb;
+            z-index: 1;
+            font-size: .62rem;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+            color: #6b7280;
+            font-weight: 600;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .param-table td { vertical-align: middle; border-color: #f1f5f9; }
+        .param-table td.param-dist-cell { white-space: nowrap; }
+        .param-name { font-family: monospace; color: #1e3a5f; font-weight: 700; }
+        .param-mono { font-family: monospace; }
+        .param-dist {
+            font-family: monospace;
+            font-size: .68rem;
+            color: #374151;
+            background: #f3f4f6;
+            padding: 1px 5px;
+            border-radius: 4px;
+        }
+        .scen-empty {
+            padding: 1.5rem;
+            text-align: center;
+            color: #9ca3af;
+            font-size: .78rem;
+        }
     </style>
 </head>
 <body>
@@ -335,8 +422,6 @@
                 </button>
                 <h5 id="detail-title" class="fw-bold text-dark mb-0"></h5>
                 <p id="detail-meta" class="text-muted small mb-3"></p>
-                <p id="detail-count" class="text-uppercase text-muted fw-semibold mb-3"
-                   style="font-size:.65rem;letter-spacing:.05em"></p>
                 <div id="detail-cards" class="d-flex flex-column gap-3"></div>
             </div>
 
@@ -364,6 +449,17 @@ let allEpidemics = [];
 let selectedPmid = null;
 let searchDebounceTimer = null;
 let currentSearchController = null;
+
+/* Detail view: data and current dropdown selections for the open paper */
+let detailToken = 0;
+const detail = {
+    models: [],
+    scenarios: [],
+    scenariosError: false,
+    odeMethod: null,
+    scenMethod: null,
+    scenName: null,
+};
 
 const SUMMARY_MAX_CONCURRENT = 8;
 const SUMMARY_ROOT_MARGIN = '200px';
@@ -649,41 +745,61 @@ async function openDetail(pmid) {
             <span class="spinner-border spinner-border-sm me-1"></span> Loading models&hellip;
         </div>`;
 
+    const token = ++detailToken;
     try {
-        const resp   = await fetch(`/explorer/api/pmids/${encodeURIComponent(pmid)}/models`);
-        const models = await resp.json();
+        const encoded = encodeURIComponent(pmid);
+        const [models, scenarios] = await Promise.all([
+            fetch(`/explorer/api/pmids/${encoded}/models`).then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            }),
+            fetch(`/explorer/api/pmids/${encoded}/scenarios`)
+                .then(r => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return r.json();
+                })
+                // A failed scenario load should not hide the equations
+                .catch(err => {
+                    console.error('Scenario load error:', err);
+                    return null;
+                }),
+        ]);
 
-        document.getElementById('detail-count').textContent =
-            `${models.length} extraction result${models.length !== 1 ? 's' : ''}`;
+        if (token !== detailToken) return;
 
         if (!models.length) {
             cardsEl.innerHTML = `<p class="text-muted">No models stored for this ${pmidLabelHtml(pmid)}.</p>`;
             return;
         }
 
-        cardsEl.innerHTML = models.map(m => `
+        detail.models = models;
+        detail.scenarios = scenarios || [];
+        detail.scenariosError = scenarios === null;
+        detail.odeMethod = pickBestModel(models).extraction_method;
+        selectScenarioMethod(detail.odeMethod);
+
+        cardsEl.innerHTML = `
             <div class="ode-card">
                 <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-light flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-2">
-                        <span class="badge rounded-pill pill-${m.extraction_method}"
-                              style="font-size:.75rem;font-weight:600">
-                            ${escHtml(m.method_label)}
-                        </span>
-                        <span class="text-muted small">${m.latex.length} equation${m.latex.length !== 1 ? 's' : ''}</span>
+                        <span class="card-hdr-label">Equations</span>
+                        <div class="dropdown">
+                            <button id="ode-method-btn" class="method-select-btn dropdown-toggle"
+                                    data-bs-toggle="dropdown" aria-expanded="false"></button>
+                            <ul id="ode-method-menu" class="dropdown-menu detail-dropdown shadow-sm"></ul>
+                        </div>
+                        <span id="ode-count" class="text-muted small"></span>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                        <button class="dl-btn dl-btn-json"
-                                data-model-id="${m.id}" data-format="json"
+                        <button class="dl-btn dl-btn-json" data-format="json"
                                 title="MIRA TemplateModel JSON">
                             <i class="bi bi-filetype-json"></i> JSON
                         </button>
-                        <button class="dl-btn dl-btn-sbml"
-                                data-model-id="${m.id}" data-format="sbml"
+                        <button class="dl-btn dl-btn-sbml" data-format="sbml"
                                 title="SBML">
                             <i class="bi bi-file-earmark-code"></i> SBML
                         </button>
-                        <button class="dl-btn dl-btn-sympy"
-                                data-model-id="${m.id}" data-format="sympy"
+                        <button class="dl-btn dl-btn-sympy" data-format="sympy"
                                 title="ODEs as SymPy (MIRA OdeModel)">
                             <i class="bi bi-file-earmark-text"></i> SymPy
                         </button>
@@ -691,35 +807,278 @@ async function openDetail(pmid) {
                 </div>
                 <div class="ode-card-body">
                     <div class="flex-grow-1">
-                        <div class="eq-box" id="detail-eq-${m.id}">
-                            ${wrapLatex(m.latex)}
-                        </div>
+                        <div class="eq-box" id="detail-eq"></div>
                     </div>
                     <div class="gc-panel">
                         <p class="text-uppercase text-muted fw-semibold mb-2"
                            style="font-size:.62rem;letter-spacing:.05em">Grounded Concepts</p>
-                        ${buildGroundingPanel(m.grounded_concepts)}
+                        <div id="detail-gc"></div>
                     </div>
                 </div>
             </div>
-        `).join('');
 
-        models.forEach(m => {
-            const box = document.getElementById(`detail-eq-${m.id}`);
-            if (box) renderKatex(box);
-        });
+            <div class="ode-card">
+                <div class="d-flex align-items-center px-3 py-2 border-bottom bg-light flex-wrap gap-2">
+                    <span class="card-hdr-label">Scenarios</span>
+                    <div class="dropdown">
+                        <button id="scen-method-btn" class="method-select-btn dropdown-toggle"
+                                data-bs-toggle="dropdown" aria-expanded="false"></button>
+                        <ul id="scen-method-menu" class="dropdown-menu detail-dropdown shadow-sm"></ul>
+                    </div>
+                    <span class="text-muted small mx-1">&rsaquo;</span>
+                    <div class="dropdown">
+                        <button id="scen-name-btn" class="scen-select-btn dropdown-toggle"
+                                data-bs-toggle="dropdown" aria-expanded="false"></button>
+                        <ul id="scen-name-menu" class="dropdown-menu detail-dropdown shadow-sm"></ul>
+                    </div>
+                    <span id="scen-count" class="text-muted small"></span>
+                </div>
+                <div id="scen-body"></div>
+            </div>
+        `;
 
-        // Wire up download buttons
+        // Download buttons act on the currently selected extractor's model
         cardsEl.querySelectorAll('.dl-btn').forEach(btn => {
             btn.addEventListener('click', e => {
                 e.stopPropagation();
-                triggerDownload(btn.dataset.modelId, btn.dataset.format, btn);
+                const m = currentModel();
+                if (m) triggerDownload(m.id, btn.dataset.format, btn);
             });
         });
 
+        renderOdeCard();
+        renderScenarioCard();
+
     } catch (err) {
-        cardsEl.innerHTML = `<div class="alert alert-danger">Failed to load models: ${err.message}</div>`;
+        if (token !== detailToken) return;
+        cardsEl.innerHTML = `<div class="alert alert-danger">Failed to load models: ${escHtml(err.message)}</div>`;
     }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Detail view: equations and scenarios cards
+════════════════════════════════════════════════════════════ */
+function priorityIndex(method) {
+    const i = METHOD_PRIORITY.indexOf(method);
+    return i === -1 ? METHOD_PRIORITY.length : i;
+}
+
+function currentModel() {
+    return detail.models.find(m => m.extraction_method === detail.odeMethod) || null;
+}
+
+function scenariosFor(method) {
+    const group = detail.scenarios.find(g => g.extraction_method === method);
+    return group ? group.scenarios : [];
+}
+
+function methodLabel(method) {
+    const found = detail.models.find(m => m.extraction_method === method)
+        || detail.scenarios.find(g => g.extraction_method === method);
+    return found ? found.method_label : method;
+}
+
+/* Every extraction method with equations or scenarios for this paper */
+function detailMethods() {
+    const methods = new Set([
+        ...detail.models.map(m => m.extraction_method),
+        ...detail.scenarios.map(g => g.extraction_method),
+    ]);
+    return [...methods].sort((a, b) => priorityIndex(a) - priorityIndex(b));
+}
+
+function selectScenarioMethod(method) {
+    detail.scenMethod = method;
+    const list = scenariosFor(method);
+    detail.scenName = list.length ? list[0].name : null;
+}
+
+function closeDropdown(menuEl) {
+    const toggle = menuEl.parentElement.querySelector('[data-bs-toggle="dropdown"]');
+    if (toggle && window.bootstrap) bootstrap.Dropdown.getOrCreateInstance(toggle).hide();
+}
+
+function setMethodButton(btn, method) {
+    btn.className = `method-select-btn dropdown-toggle pill-${method}`;
+    btn.textContent = methodLabel(method);
+}
+
+/* Fill an extractor dropdown; items for which isDisabled() is true are greyed out */
+function fillMethodMenu(menuEl, methods, current, countLabel, isDisabled, onPick) {
+    menuEl.innerHTML = methods.map(m => `
+        <li>
+            <a class="dropdown-item d-flex align-items-center justify-content-between
+                      ${m === current ? 'active' : ''} ${isDisabled(m) ? 'disabled' : ''}"
+               href="#" data-method="${escHtml(m)}">
+                <span><span class="method-dot dot-${escHtml(m)}"></span>${escHtml(methodLabel(m))}</span>
+                <span class="count">${escHtml(countLabel(m))}</span>
+            </a>
+        </li>`).join('');
+    menuEl.querySelectorAll('a').forEach(a => {
+        a.addEventListener('click', e => {
+            e.preventDefault();
+            closeDropdown(menuEl);
+            onPick(a.dataset.method);
+        });
+    });
+}
+
+function renderOdeCard() {
+    const m = currentModel();
+    if (!m) return;
+
+    setMethodButton(document.getElementById('ode-method-btn'), m.extraction_method);
+    fillMethodMenu(
+        document.getElementById('ode-method-menu'),
+        detail.models.map(x => x.extraction_method),
+        m.extraction_method,
+        x => {
+            const n = detail.models.find(y => y.extraction_method === x).latex.length;
+            return `${n} eq`;
+        },
+        () => false,
+        x => {
+            detail.odeMethod = x;
+            selectScenarioMethod(x);
+            renderOdeCard();
+            renderScenarioCard();
+        },
+    );
+
+    document.getElementById('ode-count').textContent =
+        `${m.latex.length} equation${m.latex.length !== 1 ? 's' : ''}`;
+
+    const box = document.getElementById('detail-eq');
+    box.innerHTML = wrapLatex(m.latex);
+    renderKatex(box);
+
+    document.getElementById('detail-gc').innerHTML = buildGroundingPanel(m.grounded_concepts);
+}
+
+function renderScenarioCard() {
+    const method = detail.scenMethod;
+    const list = scenariosFor(method);
+
+    setMethodButton(document.getElementById('scen-method-btn'), method);
+    fillMethodMenu(
+        document.getElementById('scen-method-menu'),
+        detailMethods(),
+        method,
+        x => {
+            const n = scenariosFor(x).length;
+            return n ? `${n} scenario${n !== 1 ? 's' : ''}` : 'none';
+        },
+        x => !scenariosFor(x).length,
+        x => {
+            selectScenarioMethod(x);
+            renderScenarioCard();
+        },
+    );
+
+    const nameBtn  = document.getElementById('scen-name-btn');
+    const nameMenu = document.getElementById('scen-name-menu');
+    const countEl  = document.getElementById('scen-count');
+    const body     = document.getElementById('scen-body');
+
+    if (detail.scenariosError) {
+        nameBtn.textContent = '—';
+        nameBtn.disabled = true;
+        nameMenu.innerHTML = '';
+        countEl.textContent = '';
+        body.innerHTML = `<div class="scen-empty text-danger">Failed to load scenarios.</div>`;
+        return;
+    }
+
+    if (!list.length) {
+        nameBtn.textContent = '—';
+        nameBtn.disabled = true;
+        nameMenu.innerHTML = '';
+        countEl.textContent = '';
+        body.innerHTML = `
+            <div class="scen-empty">
+                <i class="bi bi-sliders d-block mb-1" style="font-size:1.2rem"></i>
+                No scenarios were extracted by ${escHtml(methodLabel(method))} for this paper.
+                ${detail.scenarios.length ? '<br>Pick another extractor from the dropdown.' : ''}
+            </div>`;
+        return;
+    }
+
+    const s = list.find(x => x.name === detail.scenName) || list[0];
+    const idx = list.indexOf(s);
+
+    nameBtn.textContent = s.name;
+    nameBtn.disabled = list.length < 2;
+    nameMenu.innerHTML = list.map((x, i) => `
+        <li>
+            <a class="dropdown-item d-flex justify-content-between ${i === idx ? 'active' : ''}"
+               href="#" data-index="${i}">
+                <span class="param-mono">${escHtml(x.name)}</span>
+                <span class="count">${x.parameters.length} params</span>
+            </a>
+        </li>`).join('');
+    nameMenu.querySelectorAll('a').forEach(a => {
+        a.addEventListener('click', e => {
+            e.preventDefault();
+            closeDropdown(nameMenu);
+            detail.scenName = list[Number(a.dataset.index)].name;
+            renderScenarioCard();
+        });
+    });
+
+    const n = s.parameters.length;
+    countEl.textContent =
+        `Scenario ${idx + 1} of ${list.length} · ${n} parameter${n !== 1 ? 's' : ''}`;
+
+    const dash = '<span class="text-muted">—</span>';
+    const valueHtml = p => {
+        if (p.value_expression) {
+            return `<span class="param-mono" title="Expression as written in the paper">${escHtml(p.value_expression)}</span>`;
+        }
+        return p.value !== null && p.value !== undefined ? escHtml(p.value) : dash;
+    };
+    const distHtml = d => {
+        if (!d || !d.type) return dash;
+        const params = Object.entries(d.parameters || {})
+            .map(([k, v]) => `${k}=${v}`).join(', ');
+        return `<span class="param-dist">${escHtml(`${d.type}(${params})`)}</span>`;
+    };
+
+    body.innerHTML = `
+        ${s.description ? `<div class="scen-desc">${escHtml(s.description)}</div>` : ''}
+        <div class="param-wrap">
+            <table class="table table-sm param-table">
+                <thead>
+                    <tr>
+                        <th class="ps-3" style="width:70px">Symbol</th>
+                        <th>Name</th>
+                        <th>Value</th>
+                        <th>Units</th>
+                        <th>Distribution</th>
+                        <th class="pe-3">Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${s.parameters.map(p => `
+                    <tr>
+                        <td class="ps-3">${symbolLatex(p.display_name || p.name)}</td>
+                        <td><span class="param-name">${escHtml(p.name)}</span></td>
+                        <td>${valueHtml(p)}</td>
+                        <td>${p.units ? `<span class="param-mono">${escHtml(p.units)}</span>` : dash}</td>
+                        <td class="param-dist-cell">${distHtml(p.distribution)}</td>
+                        <td class="pe-3 text-muted">${escHtml(p.description || '')}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+    renderKatex(body);
+}
+
+/* 'β_c' -> \(β_{c}\) so multi-character subscripts render correctly */
+function symbolLatex(symbol) {
+    const tex = escHtml(symbol)
+        .replace(/_(\w+)/g, '_{$1}')
+        .replace(/\^(\w+)/g, '^{$1}');
+    return `\\(${tex}\\)`;
 }
 
 /* ════════════════════════════════════════════════════════════
