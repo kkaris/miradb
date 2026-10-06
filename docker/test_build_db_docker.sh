@@ -47,11 +47,14 @@ done
 echo "Checking database is populated with the following tables:"
 
 docker exec "$CONTAINER_NAME" psql -U postgres -d "$DATABASE" -c \
-  "SELECT 'extraction_method' AS t, count(*) FROM extraction_method
-   UNION ALL SELECT 'mira_template_models', count(*) FROM mira_template_models
-   UNION ALL SELECT 'ode_expressions', count(*) FROM ode_expressions
-   UNION ALL SELECT 'text_contents', count(*) FROM text_contents
-   UNION ALL SELECT 'text_references', count(*) FROM text_references;"
+  "SELECT tablename AS "Table",
+          (xpath('/row/c/text()',
+                 query_to_xml(
+                   format('SELECT count(*) AS c FROM %I', tablename),
+                   false, true, '')))[1]::text::bigint AS count
+   FROM pg_tables
+   WHERE schemaname = 'public'
+   ORDER BY tablename;"
 
 docker rm -f "$CONTAINER_NAME"
 echo "Verification passed."
