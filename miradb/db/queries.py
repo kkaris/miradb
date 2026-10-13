@@ -536,7 +536,9 @@ def list_scenarios_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]
         - method_label: Short display name for the extraction method.
         - scenarios: List of scenarios in the order they were added, each a
           dictionary with keys ``id``, ``name``, ``description`` and
-          ``parameters``. Each parameter is a dictionary with keys ``name``,
+          ``mira_model_ref`` and ``parameters``. ``mira_model_ref`` is the
+          ``mira_template_models`` ID whose parameter names were used during
+          extraction, if any. Each parameter is a dictionary with keys ``name``,
           ``display_name``, ``description``, ``value``, ``value_expression``,
           ``units`` and ``distribution``.
     """
@@ -550,6 +552,7 @@ def list_scenarios_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]
             Scenario.id.label("scenario_id"),
             Scenario.name.label("scenario_name"),
             Scenario.description.label("scenario_description"),
+            Scenario.mira_model_ref,
             ExtractionMethod.extraction_method,
             ScenarioParameter.name,
             ScenarioParameter.display_name,
@@ -591,6 +594,7 @@ def list_scenarios_for_pmid(client: MiraDatabaseClient, pmid: str) -> list[dict]
                 "id": row["scenario_id"],
                 "name": row["scenario_name"],
                 "description": row["scenario_description"],
+                "mira_model_ref": row["mira_model_ref"],
                 "parameters": [],
             }
             scenarios[row["scenario_id"]] = scenario

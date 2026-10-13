@@ -24,6 +24,12 @@ comparison = [
     "rapidfuzz",
     "zss",
 ]
+mcp = [
+    "mcp>=1.2,<2",
+]
+
+[project.scripts]
+miradb-mcp = "miradb.mcp.server:main"
 
 [project.urls]
 Repository = "https://github.com/gyorilab/miradb"
