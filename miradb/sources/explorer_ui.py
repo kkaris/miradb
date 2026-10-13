@@ -61,7 +61,8 @@ def search_pmids():
             "title": "...",
             "author_list": "...",
             "pub_year": ...,
-            "model_count": ...
+            "model_count": ...,
+            "scenario_count": ...
         },
         ...
     ]
@@ -86,7 +87,8 @@ def get_all_pmids():
             "title": "An SEIR model of influenza",
             "author_list": "Zhang et al.",
             "pub_year":   2021,
-            "model_count": 3
+            "model_count": 3,
+            "scenario_count": 2
         },
         ...
     ]

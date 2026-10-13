@@ -303,7 +303,7 @@
             color: #1e3a5f;
             font-family: monospace;
         }
-        .detail-dropdown { font-size: .78rem; }
+        .detail-dropdown { font-size: .78rem; max-height: 320px; overflow-y: auto; }
         .detail-dropdown .count { color: #9ca3af; font-size: .7rem; margin-left: .75rem; }
         .detail-dropdown .dropdown-item.active .count { color: #e0e7ff; }
         .method-dot {
@@ -670,8 +670,12 @@ function buildSummaryCard(ep) {
                 ${escHtml(ep.title || ep.pmid)}
             </div>
             <div class="text-muted" style="font-size:.72rem;margin-top:2px">
-                ${escHtml(ep.author_list || '')}${ep.pub_year ? ' &middot; ' + ep.pub_year : ''} &middot; ${pmidLabelHtml(ep.pmid, true)}
-
+                ${[
+                    ep.author_list ? escHtml(ep.author_list) : '',
+                    ep.pub_year ? escHtml(String(ep.pub_year)) : '',
+                    pmidLabelHtml(ep.pmid, true),
+                    ep.scenario_count ? `${ep.scenario_count} scenario${ep.scenario_count !== 1 ? 's' : ''}` : '',
+                ].filter(Boolean).join(' &middot; ')}
             </div>
         </div>
         <div class="px-3 py-2" id="card-body-${ep.pmid}">
@@ -776,7 +780,7 @@ async function openDetail(pmid) {
         detail.scenarios = scenarios || [];
         detail.scenariosError = scenarios === null;
         detail.odeMethod = pickBestModel(models).extraction_method;
-        selectScenarioMethod(detail.odeMethod);
+        selectScenarioMethod(defaultScenarioMethod());
 
         cardsEl.innerHTML = `
             <div class="ode-card">
@@ -785,7 +789,8 @@ async function openDetail(pmid) {
                         <span class="card-hdr-label">Equations</span>
                         <div class="dropdown">
                             <button id="ode-method-btn" class="method-select-btn dropdown-toggle"
-                                    data-bs-toggle="dropdown" aria-expanded="false"></button>
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                data-bs-popper-config='{"strategy":"fixed"}'></button>
                             <ul id="ode-method-menu" class="dropdown-menu detail-dropdown shadow-sm"></ul>
                         </div>
                         <span id="ode-count" class="text-muted small"></span>
@@ -817,18 +822,20 @@ async function openDetail(pmid) {
                 </div>
             </div>
 
-            <div class="ode-card">
+            <div class="ode-card" id="scen-card">
                 <div class="d-flex align-items-center px-3 py-2 border-bottom bg-light flex-wrap gap-2">
                     <span class="card-hdr-label">Scenarios</span>
                     <div class="dropdown">
                         <button id="scen-method-btn" class="method-select-btn dropdown-toggle"
-                                data-bs-toggle="dropdown" aria-expanded="false"></button>
+                                data-bs-toggle="dropdown" aria-expanded="false"
+                                data-bs-popper-config='{"strategy":"fixed"}'></button>
                         <ul id="scen-method-menu" class="dropdown-menu detail-dropdown shadow-sm"></ul>
                     </div>
                     <span class="text-muted small mx-1">&rsaquo;</span>
                     <div class="dropdown">
                         <button id="scen-name-btn" class="scen-select-btn dropdown-toggle"
-                                data-bs-toggle="dropdown" aria-expanded="false"></button>
+                                data-bs-toggle="dropdown" aria-expanded="false"
+                                data-bs-popper-config='{"strategy":"fixed"}'></button>
                         <ul id="scen-name-menu" class="dropdown-menu detail-dropdown shadow-sm"></ul>
                     </div>
                     <span id="scen-count" class="text-muted small"></span>
@@ -887,6 +894,16 @@ function detailMethods() {
     return [...methods].sort((a, b) => priorityIndex(a) - priorityIndex(b));
 }
 
+/* Scenarios open on XML extraction (the extractor that reads tables), or else
+   the highest-priority extractor that has scenarios */
+const SCENARIO_DEFAULT_METHOD = 'xml_extraction';
+
+function defaultScenarioMethod() {
+    if (scenariosFor(SCENARIO_DEFAULT_METHOD).length) return SCENARIO_DEFAULT_METHOD;
+    const first = detail.scenarios.find(g => g.scenarios.length);
+    return first ? first.extraction_method : detail.odeMethod;
+}
+
 function selectScenarioMethod(method) {
     detail.scenMethod = method;
     const list = scenariosFor(method);
@@ -939,9 +956,7 @@ function renderOdeCard() {
         () => false,
         x => {
             detail.odeMethod = x;
-            selectScenarioMethod(x);
             renderOdeCard();
-            renderScenarioCard();
         },
     );
 
@@ -956,6 +971,12 @@ function renderOdeCard() {
 }
 
 function renderScenarioCard() {
+    // Hide the card when no extractor found scenarios for this paper
+    const hasScenarios = detail.scenarios.some(g => g.scenarios.length);
+    const card = document.getElementById('scen-card');
+    card.style.display = hasScenarios || detail.scenariosError ? '' : 'none';
+    if (card.style.display === 'none') return;
+
     const method = detail.scenMethod;
     const list = scenariosFor(method);
 

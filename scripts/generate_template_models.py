@@ -10,9 +10,6 @@ import tqdm
 import traceback
 from datetime import datetime
 
-import sys
-sys.path.insert(0, "/Users/mohbe.r/Documents/CODE/NEU/mira")
-
 from mira.openai_utility import OpenAIClient
 from mira.sources.sympy_ode.paper_extraction import \
     get_template_model_from_pmid, get_pmid_pmc_download_mapping
@@ -96,9 +93,7 @@ def main():
     # Load the list of PMIDs for papers that were classified as relevant
     # (positive) by the trained model.
 
-    # df = pd.read_csv(POSITIVE_PAPERS_PATH, sep='\t')
-    df = pd.read_csv("/Users/mohbe.r/Documents/CODE/NEU/mira/mira/sources/sympy_ode/paper_relevance_ranking/extracted_papers/negative_papers_v2.tsv", sep='\t')
-    # df = pd.read_csv("/Users/mohbe.r/Documents/CODE/NEU/miradb/big_benchmark.csv", sep=',')
+    df = pd.read_csv(POSITIVE_PAPERS_PATH, sep='\t')
     
     # Initialize the OpenAI client with the desired model and temperature. 
     # Temperature is set to 0.0 for deterministic outputs.
@@ -132,8 +127,6 @@ def main():
 
     for idx, row in tqdm.tqdm(df.iterrows(), total=len(df)):
         pmid = str(row["PMID"])
-        # pmid = str(row["pmid"])
-    # for idx, pmid in enumerate(pmid_list):
         # Skip if already processed
         pmid = str(pmid)
         if pmid in processed_pmids:

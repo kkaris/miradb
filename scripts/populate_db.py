@@ -170,7 +170,7 @@ def ingest_extraction_method(
             continue
 
 
-def scenario_parameter_fields(parameter: dict) -> dict | None:
+def scenario_parameter_fields(parameter: dict) -> dict:
     """Map a MIRA Parameter JSON to ``add_scenario_parameter`` arguments.
 
     Parameters
@@ -182,8 +182,8 @@ def scenario_parameter_fields(parameter: dict) -> dict | None:
     Returns
     -------
     :
-        Keyword arguments for ``queries.add_scenario_parameter``, or ``None``
-        if the parameter has no value, value expression or distribution.
+        Keyword arguments for ``queries.add_scenario_parameter``. A parameter
+        the paper gives no value for is kept, with every value field ``None``.
     """
     value = parameter.get("value")
     value_expression = None
@@ -193,10 +193,6 @@ def scenario_parameter_fields(parameter: dict) -> dict | None:
     elif isinstance(value, float) and math.isnan(value):
         value = None
 
-    distribution = parameter.get("distribution") or None
-    if value is None and value_expression is None and distribution is None:
-        return None
-
     units = parameter.get("units")
     return {
         "name": parameter["name"],
@@ -205,7 +201,7 @@ def scenario_parameter_fields(parameter: dict) -> dict | None:
         "display_name": parameter.get("display_name"),
         "description": parameter.get("description"),
         "units": units.get("expression") if isinstance(units, dict) else None,
-        "distribution": distribution,
+        "distribution": parameter.get("distribution") or None,
     }
 
 
@@ -220,8 +216,9 @@ def ingest_scenarios(
     Reads ``<pmid>/tm/<method>/<pmid>_scenarios.json`` for each PMID. Each
     scenario is linked to the paper's text content for this extraction method,
     so ``ingest_extraction_method`` must have been run for the method first.
-    Scenarios that are already in the database are skipped, so this is safe
-    to re-run.
+    Scenarios and parameters that are already in the database are skipped, so
+    this is safe to re-run; a re-run adds any parameters missing from an
+    existing scenario.
 
     Parameters
     ----------
@@ -273,38 +270,43 @@ def ingest_scenarios(
 
             for scenario in scenarios:
                 name = scenario["name"]
-                if queries.get_scenario(
+                existing = queries.get_scenario(
                     client, text_content["id"], extraction_id, name
-                ):
-                    logger.debug(f"[{pmid}] Scenario '{name}' exists, skipping.")
-                    continue
-
-                scenario_id = queries.add_scenario(
-                    client=client,
-                    txt_content_ref=text_content["id"],
-                    extraction_method_id=extraction_id,
-                    name=name,
-                    description=scenario.get("description"),
-                    mira_model_ref=tm["id"] if tm else None,
-                    scenarios_path=str(scenarios_file),
                 )
-                if scenario_id is None:
-                    continue
+                if existing:
+                    scenario_id = existing["id"]
+                else:
+                    scenario_id = queries.add_scenario(
+                        client=client,
+                        txt_content_ref=text_content["id"],
+                        extraction_method_id=extraction_id,
+                        name=name,
+                        description=scenario.get("description"),
+                        mira_model_ref=tm["id"] if tm else None,
+                        scenarios_path=str(scenarios_file),
+                    )
+                    if scenario_id is None:
+                        continue
 
                 for parameter in scenario.get("parameters", []):
                     fields = scenario_parameter_fields(parameter)
-                    if fields is None:
-                        logger.debug(
-                            f"[{pmid}] Parameter '{parameter.get('name')}' in "
-                            f"scenario '{name}' has no value - skipping."
-                        )
+                    if queries.get_scenario_parameter(
+                        client, scenario_id, extraction_id, fields["name"]
+                    ):
                         continue
-                    queries.add_scenario_parameter(
-                        client=client,
-                        scenario_ref=scenario_id,
-                        extraction_method_id=extraction_id,
-                        **fields,
-                    )
+                    # One bad value should not stop the rest of the paper
+                    try:
+                        queries.add_scenario_parameter(
+                            client=client,
+                            scenario_ref=scenario_id,
+                            extraction_method_id=extraction_id,
+                            **fields,
+                        )
+                    except Exception:
+                        logger.exception(
+                            f"[{pmid}] Could not add parameter "
+                            f"'{fields['name']}' to scenario '{name}'"
+                        )
 
         except FileNotFoundError:
             # No scenarios saved for this PMID under this method

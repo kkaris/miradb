@@ -111,24 +111,49 @@ def _ode_count_subquery(*, outer_join_odes: bool = True):
     )
 
 
+def _scenario_count_subquery():
+    # Distinct names, so a scenario found by several extractors counts once
+    return (
+        select(
+            TextContent.text_ref,
+            func.count(func.distinct(Scenario.name)).label("scenario_count"),
+        )
+        .join(Scenario, Scenario.txt_content_ref == TextContent.id)
+        .group_by(TextContent.text_ref)
+        .subquery()
+    )
+
+
 def _format_publication_summary(row) -> dict:
     return {
         "pmid": row["pmid"],
         "title": row["title"] or "",
         "author_list": ", ".join(row["authors"]) if row["authors"] else "",
-        "pub_year": int(row["year"]),
+        # Year is missing until update_metadata_from_nxml has run for the paper
+        "pub_year": int(row["year"]) if row["year"] is not None else None,
         "model_count": int(row["model_count"]),
+        "scenario_count": int(row["scenario_count"]),
     }
 
 
 def _publication_summary_select(ode_count_sq):
-    return select(
-        TextRef.pmid,
-        TextRef.title,
-        TextRef.authors,
-        TextRef.year,
-        func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
-    ).outerjoin(ode_count_sq, ode_count_sq.c.text_ref == TextRef.id)
+    scenario_count_sq = _scenario_count_subquery()
+    return (
+        select(
+            TextRef.pmid,
+            TextRef.title,
+            TextRef.authors,
+            TextRef.year,
+            func.coalesce(ode_count_sq.c.ode_count, 0).label("model_count"),
+            func.coalesce(scenario_count_sq.c.scenario_count, 0).label(
+                "scenario_count"
+            ),
+        )
+        .outerjoin(ode_count_sq, ode_count_sq.c.text_ref == TextRef.id)
+        .outerjoin(
+            scenario_count_sq, scenario_count_sq.c.text_ref == TextRef.id
+        )
+    )
 
 
 def _pmids_matching_grounded_concepts_subquery():
@@ -207,6 +232,8 @@ def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
         - author_list: The list of authors of the publication.
         - pub_year: The year of the publication.
         - model_count: The number of converted TemplateModels for the publication.
+        - scenario_count: The number of distinct scenario names extracted for
+          the publication, across all extraction methods.
 
     Example
     -------
@@ -217,6 +244,7 @@ def list_publication_summaries(client: MiraDatabaseClient) -> list[dict]:
             "author_list": "John Doe, Jane Doe",
             "pub_year": 2020,
             "model_count": 2,
+            "scenario_count": 3,
         },
         ...
     ]
@@ -1649,9 +1677,6 @@ def add_scenario_parameter(
 ) -> int | None:
     """Add a parameter of a scenario to the database.
 
-    At least one of ``value``, ``value_expression`` or ``distribution`` must be
-    given.
-
     Parameters
     ----------
     client :
@@ -1707,10 +1732,8 @@ def add_scenario_parameter(
         return client.mutate(_write)
     except IntegrityError:
         logger.warning(
-            f"Could not add ScenarioParameter '{name}' for scenario_ref "
-            f"{scenario_ref} and extraction_method_id {extraction_method_id}: "
-            f"it already exists or has no value, value_expression or "
-            f"distribution."
+            f"A ScenarioParameter '{name}' with scenario_ref {scenario_ref} "
+            f"and extraction_method_id {extraction_method_id} already exists."
         )
         return None
 

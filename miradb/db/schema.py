@@ -325,11 +325,6 @@ class ScenarioParameter(Base, EpiTable):
             'name',
             name='uq_scenario_parameter_method_name'
         ),
-        CheckConstraint(
-            "value IS NOT NULL OR value_expression IS NOT NULL "
-            "OR distribution IS NOT NULL",
-            name="ck_parameter_has_value"
-        ),
     )
 
     def __repr__(self):
