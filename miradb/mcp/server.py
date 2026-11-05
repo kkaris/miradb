@@ -22,6 +22,7 @@ from typing import Annotated, Literal
 import anyio
 import click
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
 from miradb.db.client import MiraDatabaseClient, get_client
@@ -53,7 +54,23 @@ For questions the curated tools don't answer, read the miradb://schema
 resource (or db_describe_schema) and use db_run_sql (read-only).
 """
 
-mcp = FastMCP("miradb", instructions=INSTRUCTIONS)
+
+# Get allowed hosts and origins environment variables
+_allowed_hosts_env = os.environ["MCP_ALLOWED_HOSTS"]
+_allowed_origins_env = os.environ["MCP_ALLOWED_ORIGINS"]
+_allowed_hosts = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
+_allowed_origins = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+
+
+mcp = FastMCP(
+    "miradb",
+    instructions=INSTRUCTIONS,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts,
+        allowed_origins=_allowed_origins,
+    ),
+)
 
 _db_label = os.environ.get("MCP_MIRADB_DB", "primary")
 

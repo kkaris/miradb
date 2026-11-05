@@ -82,6 +82,8 @@ services:
       MIRADB_DB_DIALECT: postgresql
       MIRADB_DB_DRIVER: psycopg
       PYTHONUNBUFFERED: "1"
+      MCP_ALLOWED_HOSTS: "epimodels.io,localhost:8004,0.0.0.0:8004"
+      MCP_ALLOWED_ORIGINS: "https://epimodels.io,http://localhost:8004,http://0.0.0.0:8004"
     depends_on:
       db:
         condition: service_healthy
