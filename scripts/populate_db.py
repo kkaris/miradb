@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 import math
 import logging
 import xml.etree.ElementTree as ET
@@ -64,6 +65,7 @@ def ingest_extraction_method(
     folder_names: list[str],
     method: str,
     model_path: Path = MODEL_PATH,
+    method_folder: str | None = None,
 ):
     """Ingest TemplateModel outputs from per-PMID folders into the database.
 
@@ -79,19 +81,24 @@ def ingest_extraction_method(
     model_path :
         Root directory that contains per-PMID subfolders, by default
         ``MODEL_PATH``.
+    method_folder :
+        Name of the folder under ``<pmid>/tm`` to read outputs from, if it
+        differs from ``method`` (e.g. ``xml_text`` stored as
+        ``xml_extraction``). Defaults to ``method``.
     """
+    method_folder = method_folder or method
     extraction_id = queries.get_extraction_method_id(client, method)
 
-    for pmid in tqdm(folder_names, desc=f"Ingesting [{method}]"):
+    for pmid in tqdm(folder_names, desc=f"Ingesting [{method_folder} -> {method}]"):
         try:
             # Load TemplateModel JSON
-            model_file = model_path / pmid / "tm" / method / f"{pmid}.json"
+            model_file = model_path / pmid / "tm" / method_folder / f"{pmid}.json"
             with open(model_file) as f:
                 data = json.load(f)
 
             # Load intermediates JSON
             intermediates_file = (
-                model_path / pmid / "tm" / method / f"{pmid}_intermediates.json"
+                model_path / pmid / "tm" / method_folder / f"{pmid}_intermediates.json"
             )
             with open(intermediates_file) as f:
                 intermediates = json.load(f)
@@ -112,11 +119,18 @@ def ingest_extraction_method(
                 ), None
             )
             folder_path = (
-                str(pmc_folder.relative_to(base.parent)) if pmc_folder else None
+                str(pmc_folder.relative_to(base.parent)) if pmc_folder else " "
             )
 
             # Determine extracted_info_path per method
             extracted_info_path = intermediates["ode"]["extraction_file"]
+            # Store absolute paths from the machine that ran the extraction
+            # relative to the paper folder
+            extraction_file = Path(extracted_info_path)
+            if extraction_file.is_absolute() and pmid in extraction_file.parts:
+                extracted_info_path = str(Path(
+                    *extraction_file.parts[extraction_file.parts.index(pmid):]
+                ).parent)
 
             if method == "marker":
                 extracted_info_path = f"{base.stem}/{method}"
@@ -146,6 +160,11 @@ def ingest_extraction_method(
                 extraction_method_id=extraction_id,
                 extracted_info_path=extracted_info_path,
             )
+            if context_ref is None:
+                logger.warning(
+                    f"[{pmid}] Could not add {method} text content - skipping."
+                )
+                continue
             ode_id = queries.add_odes(
                 client=client,
                 txt_content_ref=int(context_ref),
@@ -210,6 +229,7 @@ def ingest_scenarios(
     folder_names: list[str],
     method: str,
     model_path: Path = MODEL_PATH,
+    method_folder: str | None = None,
 ):
     """Ingest the scenarios saved by generate_template_models.py.
 
@@ -232,13 +252,18 @@ def ingest_scenarios(
     model_path :
         Root directory that contains per-PMID subfolders, by default
         ``MODEL_PATH``.
+    method_folder :
+        Name of the folder under ``<pmid>/tm`` to read outputs from, if it
+        differs from ``method`` (e.g. ``xml_text`` stored as
+        ``xml_extraction``). Defaults to ``method``.
     """
+    method_folder = method_folder or method
     extraction_id = queries.get_extraction_method_id(client, method)
 
-    for pmid in tqdm(folder_names, desc=f"Ingesting scenarios [{method}]"):
+    for pmid in tqdm(folder_names, desc=f"Ingesting scenarios [{method_folder} -> {method}]"):
         try:
             scenarios_file = (
-                model_path / pmid / "tm" / method / f"{pmid}_scenarios.json"
+                model_path / pmid / "tm" / method_folder / f"{pmid}_scenarios.json"
             )
             with open(scenarios_file) as f:
                 scenarios = json.load(f)
@@ -320,6 +345,7 @@ def ingest_scenarios(
 def update_metadata_from_nxml(
     client: MiraDatabaseClient,
     folder_names: list[str],
+    model_path: Path = MODEL_PATH,
 ):
     """Parse article NXML files and update bibliographic metadata.
 
@@ -329,9 +355,12 @@ def update_metadata_from_nxml(
         MiraDatabaseClient instance.
     folder_names :
         PMID folder names to process.
+    model_path :
+        Root directory that contains per-PMID subfolders, by default
+        ``MODEL_PATH``.
     """
     for pmid in tqdm(folder_names, desc="Updating metadata"):
-        base_path = MODEL_PATH / str(pmid)
+        base_path = model_path / str(pmid)
 
         pmc_folder = next(
             (
@@ -417,19 +446,60 @@ def update_metadata_from_nxml(
             continue
 
 
+def parse_folder_alias(alias: str) -> tuple[str, str]:
+    """Split a ``FOLDER=METHOD`` command line value into its two parts."""
+    folder, sep, method = alias.partition("=")
+    if not sep or not folder or not method:
+        raise argparse.ArgumentTypeError(
+            f"Expected FOLDER=METHOD, got '{alias}'"
+        )
+    return folder, method
+
+
 def main():
+    parser = argparse.ArgumentParser(
+        description="Populate the database from per-PMID TemplateModel outputs."
+    )
+    parser.add_argument(
+        "--path", type=Path, default=MODEL_PATH,
+        help=f"Root folder with one folder per PMID (default: {MODEL_PATH})",
+    )
+    parser.add_argument(
+        "--folder-alias", type=parse_folder_alias, action="append", default=[],
+        metavar="FOLDER=METHOD",
+        help="Read outputs from tm/FOLDER and store them as extraction method "
+             "METHOD, e.g. xml_text=xml_extraction. Can be repeated.",
+    )
+    args = parser.parse_args()
+
+    known_methods = [m["extraction_method"] for m in EXTRACTION_METHODS_INFO]
+    folders_by_method = {method: [method] for method in known_methods}
+    for folder, method in args.folder_alias:
+        if method not in folders_by_method:
+            parser.error(
+                f"Unknown extraction method '{method}'. Use one of "
+                f"{known_methods}, or add it to "
+                f"miradb/db/extraction_methods.json first."
+            )
+        folders_by_method[method].append(folder)
+
     client = get_client()
 
     client.create_tables()
 
     add_extraction_methods(client=client, extraction_methods=EXTRACTION_METHODS_INFO)
-    folder_names = [f.name for f in MODEL_PATH.iterdir() if f.is_dir()]
+    folder_names = [f.name for f in args.path.iterdir() if f.is_dir()]
 
-    for method in EXTRACTION_METHODS_INFO:
-        ingest_extraction_method(client, folder_names, method["extraction_method"])
-        ingest_scenarios(client, folder_names, method["extraction_method"])
+    for method, method_folders in folders_by_method.items():
+        for method_folder in method_folders:
+            ingest_extraction_method(
+                client, folder_names, method, args.path, method_folder
+            )
+            ingest_scenarios(
+                client, folder_names, method, args.path, method_folder
+            )
 
-    update_metadata_from_nxml(client, folder_names)
+    update_metadata_from_nxml(client, folder_names, args.path)
 
 
 if __name__ == "__main__":
