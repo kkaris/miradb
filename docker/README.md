@@ -1,13 +1,11 @@
 # Docker deployment
 
-There are four images:
+There are two images:
 
 - `Dockerfile.postgres` - holding the database. It copies a local SQL dump and 
   loads it on first start.
-- `Dockerfile` - shared base image for the app and the MCP server. It installs 
-  the `miradb` package. It is not a runnable service by itself.
-- `Dockerfile.app` - miradb web app.
-- `Dockerfile.mcp` - miradb MCP server.
+- `Dockerfile` - installs `miradb`. The app and the MCP server both use this 
+  image. `docker-compose.yml` sets a different entrypoint for each service.
 
 With `docker compose`, three services are run:
 
@@ -107,9 +105,7 @@ volume was reused - run `docker compose down -v` again before `up`.
 
 | File                      | Purpose                                                         |
 |---------------------------|-----------------------------------------------------------------|
-| `Dockerfile.postgres`     | Postgres 17 + dump in `initdb.d` (`miradb.postgres:latest`)     |
-| `Dockerfile`              | Shared base image with miradb installed (`miradb.base:latest`)  |
-| `Dockerfile.app`          | Gunicorn app, `FROM` the base image (`miradb.app:latest`)       |
-| `Dockerfile.mcp`          | MCP server, `FROM` the base image (`miradb.mcp:latest`)         |
-| `docker-compose.yml`      | `db`, `app`, and `mcp` on `miradb_net`, plus build-only `base`  |
+| `Dockerfile.postgres`     | Postgres 17 + dump in `initdb.d`                                |
+| `Dockerfile`              | App and MCP image; entrypoints are set per service in Compose  |
+| `docker-compose.yml`      | `db`, `app`, and `mcp` on `miradb_net`                          |
 | `test_build_db_docker.sh` | `docker build` for DB image + optional table-count verification |

@@ -19,25 +19,18 @@ services:
     # ports:
     #   - "5433:5432"
 
-  # Shared source image for app and mcp images whis is not part of the running
-  # stack. The additional_contexts setting the for app and mcp build
-  # instructions tells docker compose to build this image first
-  base:
-    profiles:
-      - build
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: miradb.base:latest
-    entrypoint: ["true"]
-
   app:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.app
-      additional_contexts:
-        miradb.base: "service:base"
+      dockerfile: docker/Dockerfile
     image: miradb.app:latest
+    entrypoint:
+      [
+        "gunicorn", "-w", "2", "-t", "300", "-b", "0.0.0.0:5000",
+        "--access-logfile", "-", "--error-logfile", "-",
+        "--log-level", "info", "--capture-output",
+        "miradb.sources.app:app",
+      ]
     ports:
       - "8003:5000"
     environment:
@@ -67,10 +60,13 @@ services:
   mcp:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.mcp
-      additional_contexts:
-        miradb.base: "service:base"
+      dockerfile: docker/Dockerfile
     image: miradb.mcp:latest
+    entrypoint:
+      [
+        "miradb-mcp", "--transport", "streamable-http",
+        "--host", "0.0.0.0", "--port", "8004",
+      ]
     ports:
       - "8004:8004"
     environment:
