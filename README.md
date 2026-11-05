@@ -107,7 +107,6 @@ LaTeX ODE equations using MIRA's `OdeModel`. Run it locally with:
 python -m miradb.sources.app
 ```
 
-<<<<<<< HEAD
 ## REST API
 
 The web service also exposes a REST API under `/api`, with an OpenAPI
@@ -132,7 +131,6 @@ curl "https://epimodels.io/api/models?concept=ido:0000514&best=true"
 curl -o models.jsonl "https://epimodels.io/api/download"
 ```
 
-=======
 ## MCP server
 
 An [MCP](https://modelcontextprotocol.io) server under `miradb/mcp/` lets
@@ -162,7 +160,6 @@ Models are passed between tools by handle: `db:<id>` for a row of
 Resources: `miradb://schema`, `miradb://model/{model_ref}` and
 `miradb://simulation/{sim_id}.csv`.
 
->>>>>>> 3a1f2d3 (Adding mcp server)
 ## Docker
 
 A two-container setup (database + app) is defined under [`docker/`](docker/).
