@@ -29,8 +29,8 @@
   "extraction_method_priority": [
     "glm_ocr",
     "marker",
-    "mineru_text",
     "xml_extraction",
+    "mineru_text",
     "mineru_image"
   ]
 }
