@@ -9,5 +9,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends git
 
 # Setup pip, install miradb, and clean up
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install "miradb @ git+https://github.com/gyorilab/miradb.git" && \
+    pip install "miradb[mcp] @ git+https://github.com/gyorilab/miradb.git" && \
     rm -rf /var/lib/apt/lists/*
