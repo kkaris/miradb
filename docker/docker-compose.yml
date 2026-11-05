@@ -19,10 +19,21 @@ services:
     # ports:
     #   - "5433:5432"
 
-  app:
+  base:
+    profiles:
+      - build
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    image: miradb.base:latest
+    entrypoint: ["true"]
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.app
+      additional_contexts:
+        miradb.base: "service:base"
     image: miradb.app:latest
     ports:
       - "8003:5000"
@@ -47,6 +58,30 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    networks:
+      - miradb_net
+
+  mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+      additional_contexts:
+        miradb.base: "service:base"
+    image: miradb.mcp:latest
+    ports:
+      - "8004:8004"
+    environment:
+      MIRADB_DB_HOST: db
+      MIRADB_DB_PORT: "5432"
+      MIRADB_DB_USER: postgres
+      MIRADB_DB_PASSWORD: miradb
+      MIRADB_DB_NAME: mira_db
+      MIRADB_DB_DIALECT: postgresql
+      MIRADB_DB_DRIVER: psycopg
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - miradb_net
 

@@ -1,0 +1,8 @@
+# miradb mcp server Dockerfile
+# Omit tag in the 'FROM' command so Compose can pass it in
+FROM miradb.base
+
+# Set so server logs appear promptly in docker logs.
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["miradb-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8004"]
