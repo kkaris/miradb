@@ -64,7 +64,7 @@ class ExtractionMethod(Base, EpiTable):
     __tablename__ = 'extraction_method'
 
     id = Column(Integer, primary_key=True)
-    extraction_method = Column(String, nullable=False)
+    extraction_method = Column(String, unique=True, nullable=False)
     extraction_method_desc = Column(String, nullable=True)
     text_ref = relationship(
         "TextContent",

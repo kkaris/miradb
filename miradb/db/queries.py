@@ -666,7 +666,7 @@ def add_extraction_method(
     extraction_method: str,
     extraction_method_desc: str = None,
 ) -> int:
-    """Add an extraction method to the registry.
+    """Add an extraction method to the registry if it is not already there.
 
     Parameters
     ----------
@@ -681,8 +681,15 @@ def add_extraction_method(
     Returns
     -------
     :
-        The ID of the extraction method entry that was added.
+        The ID of the extraction method entry that was added, or of the
+        existing entry with the same name.
     """
+    existing_id = get_extraction_method_id(client, extraction_method)
+    if existing_id is not None:
+        logger.debug(
+            f"Extraction method '{extraction_method}' already registered."
+        )
+        return existing_id
 
     def _write(sess):
         row = ExtractionMethod(
