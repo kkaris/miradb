@@ -19,6 +19,9 @@ services:
     # ports:
     #   - "5433:5432"
 
+  # Shared source image for app and mcp images whis is not part of the running
+  # stack. The additional_contexts setting the for app and mcp build
+  # instructions tells docker compose to build this image first
   base:
     profiles:
       - build
