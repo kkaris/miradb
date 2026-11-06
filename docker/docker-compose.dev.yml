@@ -1,0 +1,16 @@
+# Dev stack beside production. From this directory:
+#   docker compose -p miradb-dev -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+services:
+  db:
+    image: miradb.postgres:dev
+  app:
+    image: miradb.app:dev
+    ports: !override
+      - "8013:5000"
+  mcp:
+    image: miradb.mcp:dev
+    ports: !override
+      - "8014:8004"
+    environment:
+      MCP_ALLOWED_HOSTS: "localhost:8014,127.0.0.1:8014"
+      MCP_ALLOWED_ORIGINS: "http://localhost:8014,http://127.0.0.1:8014"
