@@ -12,7 +12,6 @@ from collections import Counter
 import sympy
 
 from mira.metamodel import TemplateModel
-from mira.metamodel.comparison import ModelComparisonGraphdata
 from mira.metamodel.ops import simplify_rate_laws, stratify
 from mira.metamodel.template_model import Initial, Time
 from mira.modeling import Model
@@ -85,15 +84,48 @@ def undeclared_rate_symbols(tm: TemplateModel) -> set[str]:
     return used - known - {"t"}
 
 
+def transition_id(template, index: int) -> str:
+    """Return the ID tools use for a transition: its name, or ``t<n>``
+    (1-based position) for the unnamed transitions of extracted models."""
+    return template.name or f"t{index + 1}"
+
+
+def find_transition(tm: TemplateModel, transition: str) -> int:
+    """Return the index of a transition given by name or ``t<n>`` ID."""
+    named = [i for i, t in enumerate(tm.templates) if t.name == transition]
+    if len(named) == 1:
+        return named[0]
+    if len(named) > 1:
+        raise ValueError(
+            f"{len(named)} transitions are named {transition!r}; refer to "
+            f"one by position instead, e.g. 't{named[0] + 1}'."
+        )
+    match = re.fullmatch(r"t(\d+)", transition)
+    if match and 1 <= int(match.group(1)) <= len(tm.templates):
+        return int(match.group(1)) - 1
+    ids = [transition_id(t, i) for i, t in enumerate(tm.templates)]
+    raise ValueError(f"No transition {transition!r}. Transitions: {ids}.")
+
+
+def describe_template(template, index: int) -> dict:
+    return {
+        "id": transition_id(template, index),
+        "type": template.type,
+        "concepts": [c.name for c in _template_concepts(template)],
+        "rate_law": str(template.rate_law) if template.rate_law else None,
+    }
+
+
 def summarize_model(tm: TemplateModel, model_ref: str | None = None) -> dict:
     """Return a compact, JSON-serializable description of a TemplateModel."""
     concepts = {}
     transitions = []
-    for template in tm.templates:
+    for index, template in enumerate(tm.templates):
         for concept in _template_concepts(template):
             concepts.setdefault(concept.name, _concept_summary(concept))
         transitions.append(
             {
+                "id": transition_id(template, index),
                 "name": template.name,
                 "type": template.type,
                 "concepts": [c.name for c in _template_concepts(template)],
@@ -128,6 +160,8 @@ def summarize_model(tm: TemplateModel, model_ref: str | None = None) -> dict:
             name: str(obs.expression)
             for name, obs in (tm.observables or {}).items()
         },
+        "time": tm.time.to_json() if tm.time else None,
+        "annotations": tm.annotations.to_json() if tm.annotations else {},
     }
     undeclared = undeclared_rate_symbols(tm)
     if undeclared:
@@ -241,28 +275,6 @@ def set_model_values(
         )
     new_ref = store.add(tm, parent=model_ref, operation="set_values")
     return summarize_model(tm, new_ref)
-
-
-def compare_models(store: ModelStore, model_refs: list[str]) -> dict:
-    """Compare models by structure and grounding.
-
-    Concepts match when their groundings are equal; ontological refinement
-    via the DKG is not used, so this is a conservative similarity.
-    """
-    if len(model_refs) < 2:
-        raise ValueError("Provide at least two model_refs to compare.")
-    refs = [store.normalize_ref(r) for r in model_refs]
-    graph_data = ModelComparisonGraphdata.from_template_models(
-        [store.get(r) for r in refs],
-        refinement_func=lambda a, b: False,
-    )
-    scores = []
-    for score in graph_data.get_similarity_scores():
-        i, j = score["models"]
-        scores.append(
-            {"models": [refs[i], refs[j]], "score": score["score"]}
-        )
-    return {"model_refs": refs, "similarity_scores": scores}
 
 
 def export_model(store: ModelStore, model_ref: str, fmt: str = "template_model") -> dict:

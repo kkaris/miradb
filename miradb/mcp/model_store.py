@@ -13,14 +13,18 @@ they receive.
 
 import json
 import logging
+import re
 import threading
 import uuid
 from collections import OrderedDict
 from typing import Callable
 
+import sympy
 from sqlalchemy import select
 
 from mira.metamodel import TemplateModel
+from mira.metamodel.template_model import Observable, Time
+from mira.metamodel.units import Unit
 
 from miradb.db.client import MiraDatabaseClient
 from miradb.db.schema import MiraModel
@@ -33,6 +37,40 @@ WORKSPACE_PREFIX = "ws:"
 
 class ModelNotFoundError(LookupError):
     pass
+
+
+def _expression(value: str) -> sympy.Expr:
+    # Every identifier is a plain symbol (I, E, S, N are not sympy built-ins)
+    names = {n: sympy.Symbol(n) for n in re.findall(r"[A-Za-z_]\w*", value)}
+    return sympy.sympify(value, locals=names)
+
+
+def model_from_json(data: dict) -> TemplateModel:
+    """Deserialize a TemplateModel, including the fields that
+    ``TemplateModel.from_json`` drops.
+
+    MIRA's ``to_json`` writes ``observables`` and ``time`` but its
+    ``from_json`` does not read them back, so they would be lost on every
+    load.
+    """
+    tm = TemplateModel.from_json(data)
+    for name, obs in (data.get("observables") or {}).items():
+        tm.observables[name] = Observable(
+            name=obs.get("name", name),
+            expression=_expression(obs["expression"]),
+            display_name=obs.get("display_name"),
+            description=obs.get("description"),
+            identifiers=obs.get("identifiers"),
+            context=obs.get("context"),
+            units=Unit.from_json(obs["units"]) if obs.get("units") else None,
+        )
+    if data.get("time"):
+        time = data["time"]
+        tm.time = Time(
+            name=time.get("name", "t"),
+            units=Unit.from_json(time["units"]) if time.get("units") else None,
+        )
+    return tm
 
 
 class ModelStore:
@@ -121,7 +159,7 @@ class ModelStore:
 
     def get(self, ref: str | int) -> TemplateModel:
         """Return a fresh TemplateModel for a handle."""
-        return TemplateModel.from_json(self.get_json(ref))
+        return model_from_json(self.get_json(ref))
 
     def add(
         self,

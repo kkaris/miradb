@@ -17,17 +17,21 @@ a role with only ``SELECT`` grants is recommended.
 import functools
 import logging
 import os
+from importlib.resources import files
 from typing import Annotated, Literal
 
 import anyio
 import click
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse
 
 from miradb.db.client import MiraDatabaseClient, get_client
-from miradb.mcp import db_tools, mira_tools, simulate as sim
+from miradb.mcp import compare, db_tools, docs, mira_tools, model_edit, simulate as sim
 from miradb.mcp.model_store import ModelStore
+from miradb.mcp.refinement import dkg_closure
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +54,19 @@ Typical workflow:
    If the result has status 'missing_values', supply the listed values via
    parameters/initials and call again.
 
+Editing (mira_add_* / mira_remove_* / mira_update_* / mira_set_*): each
+call returns a new ws: model_ref, so chain edits by passing the previous
+result's model_ref. Unnamed transitions are referred to as t1, t2, ...
+(see mira_get_model); these IDs shift when transitions are removed.
+
+Comparing: mira_compare_models (similarity scores), mira_model_delta (text
+diff), mira_draw_model_delta (diff image), mira_compare_concepts,
+mira_compare_context. By default concepts are matched using the DKG
+ontology, so a more specific grounding counts as a refinement.
+
 For questions the curated tools don't answer, read the miradb://schema
 resource (or db_describe_schema) and use db_run_sql (read-only).
 """
-
 
 # Get allowed hosts and origins environment variables
 _allowed_hosts_env = os.environ["MCP_ALLOWED_HOSTS"]
@@ -93,6 +106,40 @@ ModelRef = Annotated[
     str, Field(description="Model handle: 'db:<id>' or 'ws:<id>'.")
 ]
 Pmid = Annotated[str, Field(description="PubMed ID of the paper.")]
+
+
+# ---------------------------------------------------------------------------
+# Custom routes (streamable-http only)
+# ---------------------------------------------------------------------------
+
+_TEMPLATES = files("miradb.mcp").joinpath("templates")
+_LANDING_PAGE = _TEMPLATES.joinpath("landing_page.html").read_text()
+_DOCS_PAGE = _TEMPLATES.joinpath("docs.html").read_text()
+
+
+@mcp.custom_route("/", methods=["GET"])
+async def landing_page(request: Request) -> HTMLResponse:
+    """Serve the HTML landing page at the root path."""
+    return HTMLResponse(_LANDING_PAGE)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> JSONResponse:
+    """Health check endpoint for monitoring."""
+    return JSONResponse({"status": "healthy", "service": "miradb"})
+
+
+@mcp.custom_route("/docs", methods=["GET"])
+async def docs_page(request: Request) -> HTMLResponse:
+    """Serve the tool reference page; it renders /docs.json."""
+    return HTMLResponse(_DOCS_PAGE)
+
+
+@mcp.custom_route("/docs.json", methods=["GET"])
+async def docs_json(request: Request) -> JSONResponse:
+    """Every tool (with its input schema) and resource, generated from
+    the registered definitions."""
+    return JSONResponse(await docs.docs_payload(mcp))
 
 
 # ---------------------------------------------------------------------------
@@ -241,15 +288,6 @@ async def mira_set_values(
 
 
 @mcp.tool()
-async def mira_compare_models(
-    model_refs: Annotated[list[str], Field(min_length=2)],
-) -> dict:
-    """Pairwise structural similarity of models, based on their transitions
-    and grounded concepts (exact grounding match, no ontology refinement)."""
-    return await _run(mira_tools.compare_models, store, model_refs)
-
-
-@mcp.tool()
 async def mira_export_model(
     model_ref: ModelRef,
     format: Literal["template_model", "petrinet_amr"] = "template_model",
@@ -264,6 +302,447 @@ def mira_list_workspace() -> list[dict]:
     """List the workspace models derived in this session and the operation
     that produced each."""
     return store.list_workspace()
+
+
+# ---------------------------------------------------------------------------
+# Model comparison
+# ---------------------------------------------------------------------------
+
+Refinement = Annotated[
+    Literal["dkg", "exact"],
+    Field(description="'dkg': a concept whose grounding is an ontological "
+                      "child of another's counts as a refinement (uses the "
+                      "MIRA DKG). 'exact': only identical groundings match."),
+]
+ImageFormat = Annotated[
+    Literal["png", "svg"],
+    Field(description="png is shown inline; svg is only saved to disk."),
+]
+
+
+def _image_response(data: bytes | None, info: dict):
+    return [Image(data=data, format="png"), info] if data else info
+
+
+@mcp.tool()
+async def mira_compare_models(
+    model_refs: Annotated[list[str], Field(min_length=2)],
+    refinement: Refinement = "dkg",
+    include_graph: Annotated[bool, Field(
+        description="Also return the full comparison graph (large).")] = False,
+) -> dict:
+    """Pairwise structural similarity (0-1) of two or more models, based on
+    their transitions and grounded concepts."""
+    return await _run(compare.compare_models, store, model_refs,
+                      refinement, include_graph)
+
+
+@mcp.tool()
+async def mira_compare_concepts(
+    model_ref_1: ModelRef,
+    model_ref_2: ModelRef,
+    refinement: Refinement = "dkg",
+    name_only: Annotated[bool, Field(
+        description="Label concepts by name only, without grounding and "
+                    "context.")] = False,
+) -> dict:
+    """Relate each concept (state) of one model to each concept of another:
+    is_equal, refinement_of or refined_by, plus unmatched concepts."""
+    return await _run(compare.compare_concepts, store, model_ref_1,
+                      model_ref_2, refinement, name_only)
+
+
+@mcp.tool()
+async def mira_compare_context(
+    model_refs: Annotated[list[str], Field(min_length=2)],
+) -> dict:
+    """For each context key used by the models' states (e.g. age, location,
+    severity), count its distinct values per model."""
+    return await _run(compare.compare_context, store, model_refs)
+
+
+@mcp.tool()
+async def mira_model_delta(
+    model_ref_1: ModelRef,
+    model_ref_2: ModelRef,
+    refinement: Refinement = "dkg",
+    concepts_only: bool = False,
+) -> dict:
+    """Text diff of two models: concepts and transitions that match
+    (is_equal / refinement), and those only in one model."""
+    return await _run(compare.model_delta, store, model_ref_1, model_ref_2,
+                      refinement, concepts_only)
+
+
+@mcp.tool()
+async def mira_draw_model_delta(
+    model_ref_1: ModelRef,
+    model_ref_2: ModelRef,
+    refinement: Refinement = "dkg",
+    concepts_only: bool = False,
+    format: ImageFormat = "png",
+):
+    """Draw the difference of two models as a graph: blue = only in model 1,
+    green = only in model 2, orange = in both; red edges link equal or
+    refined elements. Also saved to disk (image_path)."""
+    data, info = await _run(compare.draw_model_delta, store, model_ref_1,
+                            model_ref_2, refinement, concepts_only, format)
+    return _image_response(data, info)
+
+
+@mcp.tool()
+async def mira_draw_model(
+    model_ref: ModelRef,
+    use_display_name: bool = False,
+    format: ImageFormat = "png",
+):
+    """Draw a model's states and transitions as a graph. Also saved to disk
+    (image_path)."""
+    data, info = await _run(compare.draw_model, store, model_ref,
+                            use_display_name, format)
+    return _image_response(data, info)
+
+
+# ---------------------------------------------------------------------------
+# Editing models: every tool returns a new ws: model_ref
+# ---------------------------------------------------------------------------
+
+Units = Annotated[str | None, Field(
+    description="Unit expression, e.g. 'person', '1/day'.")]
+Distribution = Annotated[dict | None, Field(
+    description="e.g. {'type': 'Uniform1', 'parameters': {'minimum': 0.1, "
+                "'maximum': 0.5}}")]
+Grounding = Annotated[dict[str, str] | None, Field(
+    description="Ontology identifiers, prefix -> id, e.g. {'ido': '0000511'}. "
+                "Replaces all existing identifiers.")]
+Context = Annotated[dict[str, str] | None, Field(
+    description="Context, e.g. {'age': 'young'}. Replaces the existing "
+                "context.")]
+TransitionRef = Annotated[str, Field(
+    description="Transition name, or 't<n>' (1-based position) for unnamed "
+                "transitions, as shown by mira_get_model.")]
+NewParameters = Annotated[dict[str, dict] | None, Field(
+    description="Attributes for parameters the rate law introduces: name -> "
+                "{value, units, distribution, display_name, description}. "
+                "Undeclared symbols without an entry are added without a "
+                "value.")]
+
+
+@mcp.tool()
+async def mira_add_state(
+    model_ref: ModelRef,
+    name: str,
+    display_name: str | None = None,
+    description: str | None = None,
+    identifiers: Grounding = None,
+    context: Context = None,
+    units: Units = None,
+    initial: Annotated[float | str | None, Field(
+        description="Initial value or expression in parameters.")] = None,
+) -> dict:
+    """Add a state (compartment). It is not connected to anything until you
+    add transitions with mira_add_transition."""
+    return await _run(model_edit.add_state, store, model_ref, name,
+                      display_name, description, identifiers, context, units,
+                      initial)
+
+
+@mcp.tool()
+async def mira_remove_state(model_ref: ModelRef, name: str) -> dict:
+    """Remove a state together with every transition involving it and its
+    initial; the state is replaced by 0 in observables."""
+    return await _run(model_edit.remove_state, store, model_ref, name)
+
+
+@mcp.tool()
+async def mira_update_state(
+    model_ref: ModelRef,
+    name: str,
+    new_name: Annotated[str | None, Field(
+        description="Rename the state everywhere, including rate laws, "
+                    "initials and observables.")] = None,
+    display_name: str | None = None,
+    description: str | None = None,
+    identifiers: Grounding = None,
+    context: Context = None,
+    units: Units = None,
+) -> dict:
+    """Edit a state (concept): rename it, change its grounding, context,
+    units or labels. Applied to every copy of the concept in the model."""
+    return await _run(model_edit.update_state, store, model_ref, name,
+                      new_name, display_name, description, identifiers,
+                      context, units)
+
+
+@mcp.tool()
+async def mira_set_initial(
+    model_ref: ModelRef,
+    state: str,
+    expression: Annotated[float | str, Field(
+        description="Number or expression in parameters, e.g. 'N - I0'.")],
+) -> dict:
+    """Add or replace a state's initial condition."""
+    return await _run(model_edit.set_initial, store, model_ref, state,
+                      expression)
+
+
+@mcp.tool()
+async def mira_remove_initial(model_ref: ModelRef, state: str) -> dict:
+    """Remove a state's initial condition."""
+    return await _run(model_edit.remove_initial, store, model_ref, state)
+
+
+@mcp.tool()
+async def mira_add_transition(
+    model_ref: ModelRef,
+    name: str | None = None,
+    subject: Annotated[str | None, Field(
+        description="State the flow leaves; omit for a production.")] = None,
+    outcome: Annotated[str | None, Field(
+        description="State the flow enters; omit for a degradation.")] = None,
+    controllers: Annotated[list[str] | None, Field(
+        description="States that drive the transition without being "
+                    "consumed, e.g. ['I'] for infection of S.")] = None,
+    rate_law: Annotated[str | None, Field(
+        description="e.g. 'beta*S*I/N'. Omit for mass action with "
+                    "mass_action_parameter.")] = None,
+    mass_action_parameter: Annotated[str | None, Field(
+        description="Rate constant for the mass-action rate law; default "
+                    "'k_<name>'.")] = None,
+    parameters: NewParameters = None,
+) -> dict:
+    """Add a transition. Its type follows from the states given:
+    subject+outcome = conversion, outcome only = production, subject only =
+    degradation; with controllers, the controlled variant. States must
+    already exist (see mira_add_state)."""
+    return await _run(model_edit.add_transition, store, model_ref, name,
+                      subject, outcome, controllers, rate_law,
+                      mass_action_parameter, parameters)
+
+
+@mcp.tool()
+async def mira_remove_transition(
+    model_ref: ModelRef, transition: TransitionRef
+) -> dict:
+    """Remove a transition."""
+    return await _run(model_edit.remove_transition, store, model_ref,
+                      transition)
+
+
+@mcp.tool()
+async def mira_update_transition(
+    model_ref: ModelRef,
+    transition: TransitionRef,
+    new_name: str | None = None,
+    rate_law: str | None = None,
+    display_name: str | None = None,
+    parameters: NewParameters = None,
+) -> dict:
+    """Rename a transition and/or replace its rate law."""
+    return await _run(model_edit.update_transition, store, model_ref,
+                      transition, new_name, rate_law, display_name, parameters)
+
+
+@mcp.tool()
+async def mira_add_parameter(
+    model_ref: ModelRef,
+    name: str,
+    value: float | None = None,
+    distribution: Distribution = None,
+    units: Units = None,
+    display_name: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """Add a parameter."""
+    return await _run(model_edit.add_parameter, store, model_ref, name,
+                      value, distribution, units, display_name, description)
+
+
+@mcp.tool()
+async def mira_remove_parameter(
+    model_ref: ModelRef,
+    name: str,
+    replacement_value: Annotated[float | None, Field(
+        description="Value substituted wherever the parameter is used; "
+                    "default 0, which switches off transitions that use "
+                    "it as a factor.")] = None,
+) -> dict:
+    """Remove a parameter, substituting a value for it in rate laws,
+    initials and observables."""
+    return await _run(model_edit.remove_parameter, store, model_ref, name,
+                      replacement_value)
+
+
+@mcp.tool()
+async def mira_update_parameter(
+    model_ref: ModelRef,
+    name: str,
+    new_name: Annotated[str | None, Field(
+        description="Rename the parameter everywhere it is used.")] = None,
+    value: float | None = None,
+    distribution: Distribution = None,
+    clear_distribution: bool = False,
+    units: Units = None,
+    display_name: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """Edit any attribute of a parameter, or rename it. For setting many
+    values at once, use mira_set_values."""
+    return await _run(model_edit.update_parameter, store, model_ref, name,
+                      new_name, value, distribution, clear_distribution,
+                      units, display_name, description)
+
+
+@mcp.tool()
+async def mira_eliminate_unused_parameters(model_ref: ModelRef) -> dict:
+    """Remove parameters that no rate law uses."""
+    return await _run(model_edit.eliminate_unused_parameters, store,
+                      model_ref)
+
+
+@mcp.tool()
+async def mira_merge_duplicate_parameters(
+    model_ref: ModelRef, redundant: str, keep: str
+) -> dict:
+    """Replace parameter `redundant` by `keep` everywhere and remove it."""
+    return await _run(model_edit.merge_duplicate_parameters, store, model_ref,
+                      redundant, keep)
+
+
+@mcp.tool()
+async def mira_aggregate_parameters(model_ref: ModelRef) -> dict:
+    """Combine products of parameters in mass-action rate laws (e.g.
+    beta*c) into single parameters with the product's value. All
+    parameters need values first."""
+    return await _run(model_edit.aggregate_model_parameters, store, model_ref)
+
+
+@mcp.tool()
+async def mira_counts_to_dimensionless(
+    model_ref: ModelRef,
+    counts_unit: Annotated[str, Field(description="e.g. 'person'.")],
+    norm_factor: Annotated[float, Field(
+        description="Total population to divide counts by.")],
+) -> dict:
+    """Convert quantities measured in counts to fractions of norm_factor."""
+    return await _run(model_edit.to_dimensionless, store, model_ref,
+                      counts_unit, norm_factor)
+
+
+@mcp.tool()
+async def mira_add_observable(
+    model_ref: ModelRef,
+    name: str,
+    expression: Annotated[str, Field(description="e.g. 'I + H'.")],
+    display_name: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """Add an observable: an expression in states and parameters that
+    simulations also report."""
+    return await _run(model_edit.add_observable, store, model_ref, name,
+                      expression, display_name, description)
+
+
+@mcp.tool()
+async def mira_remove_observable(model_ref: ModelRef, name: str) -> dict:
+    """Remove an observable."""
+    return await _run(model_edit.remove_observable, store, model_ref, name)
+
+
+@mcp.tool()
+async def mira_update_observable(
+    model_ref: ModelRef,
+    name: str,
+    new_name: str | None = None,
+    expression: str | None = None,
+    display_name: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """Change an observable's expression or labels, or rename it."""
+    return await _run(model_edit.update_observable, store, model_ref, name,
+                      new_name, expression, display_name, description)
+
+
+@mcp.tool()
+async def mira_set_annotations(
+    model_ref: ModelRef,
+    name: str | None = None,
+    description: str | None = None,
+    license: Annotated[str | None, Field(description="SPDX id, e.g. 'CC0'.")] = None,
+    references: Annotated[list[str] | None, Field(
+        description="CURIEs, e.g. ['pubmed:32616574'].")] = None,
+    time_scale: Annotated[str | None, Field(description="e.g. 'day'.")] = None,
+    time_start: Annotated[str | None, Field(
+        description="ISO date or datetime, e.g. '2020-03-01'.")] = None,
+    time_end: Annotated[str | None, Field(description="ISO date or datetime.")] = None,
+    locations: Annotated[list[str] | None, Field(
+        description="CURIEs, e.g. ['geonames:5128581'].")] = None,
+    pathogens: Annotated[list[str] | None, Field(
+        description="NCBI Taxonomy CURIEs, e.g. ['ncbitaxon:2697049'].")] = None,
+    diseases: Annotated[list[str] | None, Field(
+        description="e.g. ['doid:0080600'].")] = None,
+    hosts: Annotated[list[str] | None, Field(
+        description="e.g. ['ncbitaxon:9606'].")] = None,
+    model_types: Annotated[list[str] | None, Field(
+        description="MAMO CURIEs, e.g. ['mamo:0000028'].")] = None,
+) -> dict:
+    """Set model-level annotations. Fields you pass replace the old value
+    (lists included); fields you omit are kept. Use mira_add_author /
+    mira_remove_author for authors."""
+    return await _run(
+        model_edit.set_annotations, store, model_ref, name=name,
+        description=description, license=license, references=references,
+        time_scale=time_scale, time_start=time_start, time_end=time_end,
+        locations=locations, pathogens=pathogens, diseases=diseases,
+        hosts=hosts, model_types=model_types,
+    )
+
+
+@mcp.tool()
+async def mira_add_author(model_ref: ModelRef, name: str) -> dict:
+    """Add an author to the model's annotations."""
+    return await _run(model_edit.add_author, store, model_ref, name)
+
+
+@mcp.tool()
+async def mira_remove_author(model_ref: ModelRef, name: str) -> dict:
+    """Remove an author from the model's annotations."""
+    return await _run(model_edit.remove_author, store, model_ref, name)
+
+
+@mcp.tool()
+async def mira_set_time(
+    model_ref: ModelRef,
+    name: Annotated[str | None, Field(
+        description="New name of the time variable; renamed in rate laws "
+                    "too.")] = None,
+    units: Units = None,
+) -> dict:
+    """Set the model's time variable name and/or units."""
+    return await _run(model_edit.set_time, store, model_ref, name, units)
+
+
+@mcp.tool()
+async def mira_merge_models(
+    model_ref: ModelRef, other_model_ref: ModelRef
+) -> dict:
+    """Combine two models: add the second model's transitions, parameters,
+    initials and observables to the first. States with the same name are
+    treated as the same state; on other name clashes the first model's
+    definitions win."""
+    return await _run(model_edit.merge_models, store, model_ref,
+                      other_model_ref)
+
+
+@mcp.tool()
+async def mira_apply_scenario(model_ref: ModelRef, scenario_id: int) -> dict:
+    """Bake a DB scenario into a model: parameter values, and initials from
+    scenario parameters such as I_0. To just simulate a scenario, pass
+    scenario_id to simulate_model instead."""
+    scenario = await _run(db_tools.get_scenario, _client(), scenario_id)
+    if scenario is None:
+        raise ValueError(f"No scenario with id {scenario_id}.")
+    return await _run(model_edit.apply_db_scenario, store, model_ref, scenario)
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +810,12 @@ def model_resource(model_ref: str) -> dict:
     return store.get_json(model_ref)
 
 
+@mcp.resource("miradb://model/{model_ref}/graph", mime_type="application/json")
+def model_graph_resource(model_ref: str) -> dict:
+    """Node-link JSON of a model's state/transition graph."""
+    return compare.model_graph_json(store, model_ref)
+
+
 @mcp.resource("miradb://simulation/{sim_id}.csv", mime_type="text/csv")
 def simulation_resource(sim_id: str) -> str:
     """Full trajectory of a simulation as CSV."""
@@ -357,6 +842,8 @@ def main(transport, host, port, db_label):
     logging.basicConfig(level=logging.INFO)
     mcp.settings.host = host
     mcp.settings.port = port
+    # Comparisons default to DKG refinement; load the ontology up front
+    dkg_closure.prefetch()
     mcp.run(transport=transport)
 
 
