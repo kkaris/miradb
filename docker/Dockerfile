@@ -4,7 +4,7 @@ FROM python:3.13-slim
 
 WORKDIR /sw
 
-RUN apt-get update && apt-get install -y --no-install-recommends git
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential git gcc
 
 # Setup pip, install miradb, and clean up
 RUN pip install --no-cache-dir --upgrade pip && \
