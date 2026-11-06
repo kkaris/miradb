@@ -16,7 +16,7 @@ dependencies = [
     "click",
     "gunicorn",
     "psycopg[binary]",
-    "mira[sbml,ode] @ git+https://github.com/gyorilab/mira.git",
+    "mira[sbml,ode,web] @ git+https://github.com/gyorilab/mira.git",
 ]
 
 [project.optional-dependencies]
