@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIRA-DB MCP Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2b7a86;
+            --primary-vivid: #4dafbc;
+            --primary-dark: #1e6570;
+            --primary-light: #e6f7f8;
+            --accent: #f5b461;
+            --success: #10b981;
+            --success-light: #ecfdf5;
+
+            --bg-page: #ffffff;
+            --bg-light: #f8fafc;
+            --bg-code: #1e293b;
+            --text-code: #e2e8f0;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #5cc0cc;
+                --primary-dark: #8fd6de;
+                --primary-light: #14343a;
+                --success-light: #0f2e25;
+                --bg-page: #0f172a;
+                --bg-light: #1e293b;
+                --bg-code: #020617;
+                --text: #e2e8f0;
+                --text-light: #94a3b8;
+                --border: #334155;
+            }
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg-page);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        a {
+            color: var(--primary);
+        }
+
+        /* Hero */
+        .hero {
+            background: linear-gradient(135deg, #4dafbc 0%, #2b7a86 100%);
+            color: white;
+            padding: 56px 40px 44px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 2.4em;
+            font-weight: 700;
+            margin-bottom: 10px;
+            letter-spacing: -0.02em;
+        }
+
+        .hero .tagline {
+            font-size: 1.15em;
+            opacity: 0.95;
+            margin-bottom: 22px;
+        }
+
+        .status {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            padding: 6px 16px;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Top menu */
+        .topnav {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 40px;
+            background: var(--bg-page);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .topnav .brand {
+            font-weight: 700;
+            color: var(--text);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .topnav nav {
+            display: flex;
+            align-items: center;
+            gap: 4px 18px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .topnav nav a {
+            color: var(--text-light);
+            text-decoration: none;
+            font-size: 0.92em;
+            font-weight: 500;
+        }
+
+        .topnav nav a:hover {
+            color: var(--primary);
+        }
+
+        .topnav nav a.nav-connect,
+        .cta {
+            background: var(--accent);
+            color: #3b2600;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-weight: 600;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .topnav nav a.nav-connect:hover,
+        .cta:hover {
+            filter: brightness(1.05);
+            color: #3b2600;
+        }
+
+        .cta {
+            display: inline-block;
+            margin-top: 18px;
+            font-size: 1em;
+            padding: 10px 22px;
+            box-shadow: var(--shadow-md);
+        }
+
+        .section {
+            scroll-margin-top: 70px;
+        }
+
+        /* Capability cards */
+        .cap-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+            margin: 18px 0 24px;
+        }
+
+        .cap {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            background: var(--bg-light);
+            min-width: 0;
+        }
+
+        .cap-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .cap-head h4 {
+            font-size: 1em;
+            color: var(--primary-dark);
+        }
+
+        .cap-count {
+            font-size: 0.78em;
+            font-weight: 600;
+            color: var(--text-light);
+            white-space: nowrap;
+        }
+
+        .section .cap p {
+            font-size: 0.9em;
+            color: var(--text-light);
+            margin: 0;
+        }
+
+        /* Content */
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 48px;
+        }
+
+        .section h2 {
+            font-size: 1.6em;
+            color: var(--primary-dark);
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--primary-light);
+        }
+
+        .section h3 {
+            font-size: 1.1em;
+            margin: 22px 0 10px;
+        }
+
+        .section p {
+            margin-bottom: 14px;
+        }
+
+        .section ul {
+            margin: 0 0 14px 22px;
+        }
+
+        .section li {
+            margin-bottom: 6px;
+        }
+
+        .inline-code {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-size: 0.88em;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            padding: 1px 6px;
+            border-radius: 4px;
+            word-break: break-word;
+        }
+
+        /* Workflow diagram */
+        .pipeline {
+            list-style: none;
+            margin: 20px 0 8px;
+            padding: 0;
+        }
+
+        .section .pipeline li.step {
+            display: flex;
+            gap: 16px;
+            position: relative;
+            margin: 0;
+            padding-bottom: 14px;
+        }
+
+        .step:not(:last-child)::before {
+            content: "";
+            position: absolute;
+            left: 17px;
+            top: 36px;
+            bottom: 0;
+            width: 2px;
+            background: var(--primary-vivid);
+            opacity: 0.5;
+        }
+
+        .step-num {
+            flex: 0 0 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step.optional .step-num {
+            background: var(--bg-page);
+            color: var(--primary);
+            border: 2px dashed var(--primary);
+        }
+
+        .step-body {
+            flex: 1;
+            min-width: 0;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 16px;
+            background: var(--bg-light);
+        }
+
+        .step-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 4px 12px;
+        }
+
+        .step-head h4 {
+            font-size: 1em;
+            margin: 0;
+        }
+
+        .step-head .tag {
+            font-size: 0.72em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-light);
+            margin-left: 6px;
+        }
+
+        .returns {
+            font-size: 0.82em;
+            color: var(--text-light);
+        }
+
+        .section .step-body p {
+            margin: 4px 0 8px;
+            font-size: 0.92em;
+            color: var(--text-light);
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .chip {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-size: 0.78em;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            padding: 2px 9px;
+            border-radius: 999px;
+            overflow-wrap: anywhere;
+        }
+
+        .handle {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-size: 0.92em;
+            background: var(--bg-code);
+            color: #7dd3fc;
+            padding: 1px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .loop {
+            margin-top: 10px;
+            padding: 8px 12px;
+            border-left: 3px solid var(--accent);
+            background: rgba(245, 180, 97, 0.12);
+            border-radius: 4px;
+            font-size: 0.88em;
+        }
+
+        .side-lane {
+            margin: 4px 0 24px 52px;
+            padding: 12px 16px;
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+        }
+
+        .side-lane h4 {
+            font-size: 0.95em;
+            margin-bottom: 8px;
+        }
+
+        .side-lane .lane-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 6px 10px;
+            font-size: 0.9em;
+            margin-bottom: 6px;
+        }
+
+        .side-lane .lane-row:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Info boxes */
+        .info-box {
+            background: var(--primary-light);
+            border-left: 4px solid var(--primary);
+            padding: 16px 20px;
+            border-radius: 6px;
+            margin: 18px 0;
+        }
+
+        .info-box h3 {
+            margin-top: 0;
+        }
+
+        .info-box p:last-child,
+        .info-box ul:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-box.success {
+            background: var(--success-light);
+            border-left-color: var(--success);
+        }
+
+        /* Code blocks */
+        .code-block {
+            background: var(--bg-code);
+            border-radius: 8px;
+            margin: 12px 0 18px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 14px;
+            background: rgba(255, 255, 255, 0.06);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .code-title {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-size: 0.82em;
+            color: #7dd3fc;
+            word-break: break-word;
+        }
+
+        .code-block pre {
+            color: var(--text-code);
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-size: 0.82em;
+            line-height: 1.55;
+            padding: 14px;
+            overflow-x: auto;
+            margin: 0;
+        }
+
+        .comment {
+            color: #64748b;
+        }
+
+        .copy-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e2e8f0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.78em;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Collapsibles */
+        .collapsible {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 18px;
+            margin-top: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-light);
+            cursor: pointer;
+            font-weight: 600;
+            user-select: none;
+        }
+
+        .collapsible:hover,
+        .collapsible:focus {
+            border-color: var(--primary-vivid);
+            outline: none;
+        }
+
+        .collapsible-icon {
+            transition: transform 0.2s;
+            color: var(--text-light);
+        }
+
+        .collapsible[aria-expanded="true"] .collapsible-icon {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            display: none;
+        }
+
+        .collapsible-content.open {
+            display: block;
+        }
+
+        .collapsible-content-inner {
+            padding: 16px 4px 4px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 14px;
+        }
+
+        .tab {
+            background: none;
+            border: none;
+            padding: 10px 16px;
+            font-size: 0.95em;
+            font-weight: 500;
+            color: var(--text-light);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 28px 40px;
+            border-top: 1px solid var(--border);
+            color: var(--text-light);
+            font-size: 0.92em;
+        }
+
+        @media (max-width: 640px) {
+            .hero {
+                padding: 40px 16px 32px;
+            }
+
+            .hero h1 {
+                font-size: 1.8em;
+            }
+
+            .content {
+                padding: 28px 16px;
+            }
+
+            .footer {
+                padding: 24px 16px;
+            }
+
+            .side-lane {
+                margin-left: 0;
+            }
+
+            .topnav {
+                padding: 10px 16px;
+            }
+
+            .topnav nav a:not(.nav-connect) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Top menu -->
+        <header class="topnav">
+            <a class="brand" href="#top">MIRA-DB MCP</a>
+            <nav aria-label="Page sections">
+                <a href="#about">About</a>
+                <a href="#how-it-works">How it works</a>
+                <a href="#examples">Examples</a>
+                <a href="docs">Tool reference</a>
+                <a class="nav-connect" href="#connect">Connect ↓</a>
+            </nav>
+        </header>
+
+        <!-- Hero -->
+        <div class="hero" id="top">
+            <h1>MIRA-DB</h1>
+            <p class="tagline">Epidemiological models extracted from the literature, for AI agents via Model Context Protocol</p>
+            <div class="status">✓ Server is running</div>
+            <div><a class="cta" href="#connect">Connect your AI client ↓</a></div>
+        </div>
+
+        <div class="content">
+
+            <!-- About -->
+            <section class="section" id="about">
+                <h2>About this MCP Server</h2>
+
+                <p><strong>MIRA-DB</strong> is a database of compartmental epidemiology models automatically
+                    extracted from papers. Each paper's ODEs are extracted with several methods (PDF text, OCR,
+                    PubMed Central XML) and converted into ontology-grounded
+                    <a href="https://github.com/gyorilab/mira" target="_blank">MIRA</a> <code class="inline-code">TemplateModel</code>s,
+                    together with the parameter scenarios reported in the paper. Browse it at
+                    <a href="https://epimodels.io" target="_blank">epimodels.io</a>.</p>
+
+                <div class="info-box success">
+                    <h3>What You Can Do</h3>
+                    <ul>
+                        <li><strong>Find models in the literature:</strong> Search papers by title, author, year or
+                            grounded concept (e.g. the IDO term for "infected"), and get every extracted model and
+                            scenario for a paper.</li>
+                        <li><strong>Inspect model structure:</strong> See compartments with their ontology
+                            groundings, transitions with rate laws, and the ODE system as equations.</li>
+                        <li><strong>Edit models:</strong> Add, remove or update compartments, transitions,
+                            parameters, initial conditions and observables, one change at a time, with every
+                            version kept.</li>
+                        <li><strong>Transform models:</strong> Stratify by age, location or any other key, merge two
+                            models, bake in a paper's scenario, and simplify rate laws or parameters, all with MIRA.</li>
+                        <li><strong>Compare models:</strong> Score similarity, list what differs, and draw the
+                            difference as a graph. Concepts are matched through the MIRA domain knowledge graph, so
+                            a more specific grounding counts as a refinement.</li>
+                        <li><strong>Simulate:</strong> Run deterministic ODE simulations using a paper's own
+                            scenario, with the server telling the agent exactly which values are still missing.</li>
+                        <li><strong>Query anything else:</strong> Run read-only SQL for questions the curated tools
+                            don't cover.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- How it works -->
+            <section class="section" id="how-it-works">
+                <h2>How this MCP server works</h2>
+
+                <p>The server exposes <strong><span data-count="all">46</span> tools</strong> in six groups. The
+                    <a href="docs">tool reference</a> lists every tool with its parameters.</p>
+
+                <div class="cap-grid">
+                    <div class="cap">
+                        <div class="cap-head"><h4>🔎 Search &amp; query</h4><span class="cap-count"><span data-count="query">7</span> tools</span></div>
+                        <p>Papers, extracted ODEs, scenarios, the database schema, and read-only SQL.</p>
+                    </div>
+                    <div class="cap">
+                        <div class="cap-head"><h4>🧩 Inspect</h4><span class="cap-count"><span data-count="inspect">5</span> tools</span></div>
+                        <p>Model summaries, equations, graph drawings, export as MIRA JSON or Petri net AMR.</p>
+                    </div>
+                    <div class="cap">
+                        <div class="cap-head"><h4>✏️ Edit</h4><span class="cap-count"><span data-count="edit">19</span> tools</span></div>
+                        <p>Add, remove or update states, transitions, parameters, initials and observables; set
+                            values, annotations, authors and time units.</p>
+                    </div>
+                    <div class="cap">
+                        <div class="cap-head"><h4>🔀 Transform</h4><span class="cap-count"><span data-count="transform">8</span> tools</span></div>
+                        <p>Stratify, merge models, apply a scenario, simplify rate laws, tidy parameters, convert
+                            counts to fractions.</p>
+                    </div>
+                    <div class="cap">
+                        <div class="cap-head"><h4>⚖️ Compare</h4><span class="cap-count"><span data-count="compare">5</span> tools</span></div>
+                        <p>Similarity scores, text diffs, diff drawings, and concept and context comparison with
+                            ontology-aware matching.</p>
+                    </div>
+                    <div class="cap">
+                        <div class="cap-head"><h4>📈 Simulate</h4><span class="cap-count"><span data-count="simulate">2</span> tools</span></div>
+                        <p>Deterministic ODE runs with peak and final-size stats, trajectories and CSV.</p>
+                    </div>
+                </div>
+
+                <p>A typical session goes from a search term to a simulated epidemic. Each step's output feeds
+                    the next:</p>
+
+                <ol class="pipeline">
+                    <li class="step">
+                        <div class="step-num">1</div>
+                        <div class="step-body">
+                            <div class="step-head">
+                                <h4>Find papers</h4>
+                                <span class="returns">returns PMIDs</span>
+                            </div>
+                            <p>Search by title, author, year or grounded concept, e.g. <code class="inline-code">covid</code>
+                                or the IDO ID for "infected".</p>
+                            <div class="chips"><span class="chip">db_search_publications</span></div>
+                        </div>
+                    </li>
+                    <li class="step">
+                        <div class="step-num">2</div>
+                        <div class="step-body">
+                            <div class="step-head">
+                                <h4>Open a paper</h4>
+                                <span class="returns">returns <span class="handle">db:984</span> + scenario IDs</span>
+                            </div>
+                            <p>One model per extraction method, plus the parameter scenarios reported in the paper.</p>
+                            <div class="chips">
+                                <span class="chip">db_get_publication</span>
+                                <span class="chip">db_get_scenarios</span>
+                                <span class="chip">db_get_odes</span>
+                            </div>
+                        </div>
+                    </li>
+                    <li class="step">
+                        <div class="step-num">3</div>
+                        <div class="step-body">
+                            <div class="step-head">
+                                <h4>Inspect the model</h4>
+                                <span class="returns">returns compartments, rate laws, ODEs</span>
+                            </div>
+                            <p>Compartments with ontology groundings, transitions, and which parameters and
+                                initial values are still missing.</p>
+                            <div class="chips">
+                                <span class="chip">mira_get_model</span>
+                                <span class="chip">mira_get_equations</span>
+                                <span class="chip">mira_draw_model</span>
+                            </div>
+                        </div>
+                    </li>
+                    <li class="step optional">
+                        <div class="step-num">4</div>
+                        <div class="step-body">
+                            <div class="step-head">
+                                <h4>Edit or transform it<span class="tag">optional</span></h4>
+                                <span class="returns"><span class="handle">db:984</span> → <span class="handle">ws:90c4…</span> → <span class="handle">ws:704b…</span></span>
+                            </div>
+                            <p>Add a compartment, rewrite a rate law, stratify by age, or merge in another model.
+                                Each change returns a new workspace model, so edits chain and the original is never
+                                modified.</p>
+                            <div class="chips">
+                                <span class="chip">mira_add_* / mira_remove_* / mira_update_*</span>
+                                <span class="chip">mira_stratify</span>
+                                <span class="chip">mira_merge_models</span>
+                                <span class="chip">mira_apply_scenario</span>
+                            </div>
+                        </div>
+                    </li>
+                    <li class="step">
+                        <div class="step-num">5</div>
+                        <div class="step-body">
+                            <div class="step-head">
+                                <h4>Simulate</h4>
+                                <span class="returns">returns peak, timing, final size, CSV</span>
+                            </div>
+                            <p>Deterministic ODE run using a paper's scenario, with any overrides on top.</p>
+                            <div class="chips">
+                                <span class="chip">simulate_model</span>
+                                <span class="chip">get_simulation</span>
+                            </div>
+                            <div class="loop"><strong>↻ If values are missing,</strong> the server returns
+                                <code class="inline-code">missing_values</code> listing exactly which parameters and
+                                initial conditions to supply, and the agent calls again with them.</div>
+                        </div>
+                    </li>
+                </ol>
+
+                <div class="side-lane">
+                    <h4>At any point</h4>
+                    <div class="lane-row">
+                        <span>Compare models</span>
+                        <span class="chip">mira_compare_models</span>
+                        <span class="chip">mira_model_delta</span>
+                        <span class="chip">mira_draw_model_delta</span>
+                        <span class="chip">mira_compare_concepts</span>
+                    </div>
+                    <div class="lane-row">
+                        <span>Export or review the workspace</span>
+                        <span class="chip">mira_export_model</span>
+                        <span class="chip">mira_list_workspace</span>
+                    </div>
+                    <div class="lane-row">
+                        <span>Ask anything else with read-only SQL</span>
+                        <span class="chip">db_describe_schema</span>
+                        <span class="chip">db_run_sql</span>
+                    </div>
+                </div>
+
+                <p>Models are passed between tools by <strong>handle</strong>, never as raw JSON:</p>
+                <ul>
+                    <li><code class="inline-code">db:&lt;id&gt;</code> is a model stored in MIRA-DB.</li>
+                    <li><code class="inline-code">ws:&lt;id&gt;</code> is a model the agent derived in this session
+                        (for example by stratifying). Tools that change a model return a new
+                        <code class="inline-code">ws:</code> handle and leave the input untouched.</li>
+                </ul>
+            </section>
+
+            <!-- Example Usage -->
+            <section class="section" id="examples">
+                <h2>Example Usage</h2>
+
+                <p>Once connected, ask questions in plain English. The AI agent uses this MCP server to search,
+                    inspect and simulate models on your behalf:</p>
+
+                <!-- Example 1 -->
+                <div class="collapsible" role="button" tabindex="0" aria-expanded="false" onclick="toggleCollapsible(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCollapsible(this)}">
+                    <span class="collapsible-title">🦠 Find and Simulate a Published Model</span>
+                    <span class="collapsible-icon" aria-hidden="true">▼</span>
+                </div>
+                <div class="collapsible-content" role="region">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"Find a COVID-19 SEIR model for South Africa and simulate the
+                                pre-lockdown scenario for 100 days. When does the epidemic peak?"</em></p>
+
+                        <p>Behind the scenes, the AI agent runs the following steps using this MCP server:</p>
+
+                        <h3>Step 1: Search the literature</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">db_search_publications(query="covid", limit=3)</span>
+                            </div>
+                            <pre>{
+  "total": 1036,
+  "results": [
+    {"pmid": "38977919", "title": "Integrating socio-psychological factors in the SEIR model ...", "model_count": 5, "scenario_count": 1},
+    {"pmid": "32982082", "title": "Simulation of coronavirus disease 2019 (COVID-19) scenarios ...", "model_count": 5, "scenario_count": 0},
+    {"pmid": "32706790", "title": "Quantifying early COVID-19 outbreak transmission in South Africa ...", "model_count": 5, "scenario_count": 2}
+  ]
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Get the paper's models and scenarios</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">db_get_publication(pmid="32706790")</span>
+                            </div>
+                            <pre>{
+  "title": "Quantifying early COVID-19 outbreak transmission in South Africa and exploring vaccine efficacy scenarios",
+  "journal": "PLoS ONE", "year": 2020,
+  "models": [
+    {"model_ref": "db:984", "extraction_method": "xml_extraction", "template_count": 3},
+    {"model_ref": "db:249", "extraction_method": "marker", "template_count": 3},
+    <span class="comment">// ... 3 more extraction methods</span>
+  ],
+  "scenarios": [
+    {"scenario_id": 3, "name": "before_lockdown", "model_ref": "db:984", "parameter_count": 3},
+    {"scenario_id": 4, "name": "after_lockdown", "model_ref": "db:984", "parameter_count": 1},
+    <span class="comment">// ... 2 more</span>
+  ]
+}</pre>
+                        </div>
+
+                        <h3>Step 3: Inspect the equations</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_get_equations(model_ref="db:984")</span>
+                            </div>
+                            <pre>{
+  "equations": [
+    "dS/dt = -I*S*beta*(1 - epsilon)",
+    "dI/dt = E*sigma - I*gamma",
+    "dE/dt = -E*sigma + I*S*beta*(1 - epsilon)",
+    "dR/dt = I*gamma"
+  ]
+}</pre>
+                        </div>
+
+                        <h3>Step 4: Try the scenario, and see what's missing</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">simulate_model(model_ref="db:984", t_end=100, scenario_id=3)</span>
+                            </div>
+                            <pre>{
+  "status": "missing_values",
+  "missing_parameters": ["epsilon"],
+  "missing_initials": ["S", "I", "E", "R"],
+  "scenario_applied": {"parameters": {"beta": 1.3, "sigma": 3.21, "gamma": 2.27}},
+  "hint": "Pass the missing values in `parameters` / `initials`, or pick a `scenario_id` that provides them."
+}</pre>
+                        </div>
+
+                        <h3>Step 5: Supply the values and run</h3>
+                        <p>The scenario reports σ and γ as periods in days, so the agent converts them to rates
+                            (1/3.21 and 1/2.27), sets ε = 0 (no vaccine) and starts with 0.1% infected:</p>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">simulate_model(model_ref="db:984", t_end=100, scenario_id=3,
+                                    parameters={"epsilon": 0, "sigma": 0.3115, "gamma": 0.4405},
+                                    initials={"S": 0.999, "E": 0, "I": 0.001, "R": 0})</span>
+                            </div>
+                            <pre>{
+  "status": "ok",
+  "sim_id": "9a5612fe5b7c",
+  "stats": {
+    "I": {"max": 0.119, "t_at_max": 27.0},
+    "E": {"max": 0.179, "t_at_max": 25.0},
+    "R": {"final": 0.937},
+    "S": {"final": 0.063}
+  },
+  "full_results": "miradb://simulation/9a5612fe5b7c.csv"
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>Result:</strong> With the pre-lockdown parameters (R₀ ≈ β/γ ≈ 2.95), infections
+                            peak at <strong>about 12% of the population on day 27</strong>, and about
+                            <strong>94%</strong> have been infected by day 100. The agent got from a search term to a
+                            simulated epidemic in five tool calls, without anyone writing ODE code.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Example 2 -->
+                <div class="collapsible" role="button" tabindex="0" aria-expanded="false" onclick="toggleCollapsible(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCollapsible(this)}">
+                    <span class="collapsible-title">👥 Stratify a Model by Age</span>
+                    <span class="collapsible-icon" aria-hidden="true">▼</span>
+                </div>
+                <div class="collapsible-content" role="region">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"Take that South Africa SEIR model and split it into young and
+                                old age groups."</em></p>
+                        <p>Behind the scenes, the AI agent runs the following steps using this MCP server:</p>
+
+                        <h3>Step 1: Look at the model's structure and groundings</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_get_model(model_ref="db:984")</span>
+                            </div>
+                            <pre>{
+  "compartments": [
+    {"name": "S", "identifiers": {"ido": "0000514"}, "context": {"status": "susceptible"}},
+    {"name": "E", "identifiers": {"apollosv": "00000154"}, "context": {"status": "exposed"}},
+    {"name": "I", "identifiers": {"ido": "0000511"}, "context": {"status": "infected"}},
+    {"name": "R", "identifiers": {"ido": "0000592"}, "context": {"status": "recovered"}}
+  ],
+  "transition_type_counts": {"ControlledConversion": 1, "NaturalConversion": 2},
+  "parameters_without_value": ["beta", "epsilon", "gamma", "sigma"]
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Stratify</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_stratify(model_ref="db:984", key="age", strata=["young", "old"])</span>
+                            </div>
+                            <pre>{
+  "model_ref": "ws:06bd5c0ce2fc",
+  "compartments": [
+    {"name": "S_young", "context": {"status": "susceptible", "age": "young"}},
+    {"name": "S_old",   "context": {"status": "susceptible", "age": "old"}},
+    {"name": "I_young", "context": {"status": "infected",    "age": "young"}},
+    <span class="comment">// ... 5 more compartments</span>
+  ],
+  "transitions": [
+    {"name": "t_young", "type": "ControlledConversion", "rate_law": "I_young*S_young*beta_0*(1 - epsilon_0)"},
+    {"name": "t_old",   "type": "ControlledConversion", "rate_law": "I_old*S_old*beta_1*(1 - epsilon_1)"},
+    <span class="comment">// ... plus progression, recovery and between-strata transitions</span>
+  ]
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>Result:</strong> A new workspace model <code class="inline-code">ws:06bd5c0ce2fc</code>
+                            with 8 compartments that keep their ontology groundings, and per-stratum parameters. The
+                            original <code class="inline-code">db:984</code> is unchanged; the new handle can go
+                            straight into <code class="inline-code">mira_set_values</code>,
+                            <code class="inline-code">simulate_model</code> or
+                            <code class="inline-code">mira_export_model</code> (e.g. as an ASKEM Petri net AMR).
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Example: edit and diff -->
+                <div class="collapsible" role="button" tabindex="0" aria-expanded="false" onclick="toggleCollapsible(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCollapsible(this)}">
+                    <span class="collapsible-title">💉 Add a Vaccination Compartment</span>
+                    <span class="collapsible-icon" aria-hidden="true">▼</span>
+                </div>
+                <div class="collapsible-content" role="region">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"Add a vaccinated compartment to the South Africa SEIR model,
+                                with people vaccinated at 1% a day, and show me what changed."</em></p>
+                        <p>Behind the scenes, the AI agent runs the following steps using this MCP server:</p>
+
+                        <h3>Step 1: Add a grounded state</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_add_state(model_ref="db:984", name="V", identifiers={"vo": "0001376"}, context={"status": "vaccinated"})</span>
+                            </div>
+                            <pre>{
+  "model_ref": "ws:90c406ce9bdc",
+  "parent": "db:984",
+  "operation": "add_state('V')",
+  "changes": {"added_state": "V", "hint": "Connect the state with mira_add_transition."}
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Connect it with a transition</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_add_transition(model_ref="ws:90c406ce9bdc", name="vaccination", subject="S", outcome="V", rate_law="nu*S", parameters={"nu": {"value": 0.01, "units": "1/day"}})</span>
+                            </div>
+                            <pre>{
+  "model_ref": "ws:704bdd6023a4",
+  "parent": "ws:90c406ce9bdc",
+  "operation": "add_transition(NaturalConversion)",
+  "changes": {
+    "added_transition": {"id": "vaccination", "type": "NaturalConversion", "concepts": ["S", "V"], "rate_law": "S*nu"},
+    "added_parameters": ["nu"]
+  }
+}</pre>
+                        </div>
+
+                        <h3>Step 3: Diff against the original</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_model_delta(model_ref_1="db:984", model_ref_2="ws:704bdd6023a4")</span>
+                            </div>
+                            <pre>{
+  "concepts": {
+    "matched": [<span class="comment">/* S, E, I, R: is_equal */</span>],
+    "only_in_model_2": [{"name": "V", "identifiers": {"vo": "0001376"}, "context": {"status": "vaccinated"}}]
+  },
+  "transitions": {
+    "matched": [<span class="comment">/* t1 infection, t2 progression, t3 recovery: is_equal */</span>],
+    "only_in_model_2": [{"id": "vaccination", "type": "NaturalConversion", "concepts": ["S", "V"], "rate_law": "S*nu"}]
+  }
+}</pre>
+                        </div>
+
+                        <h3>Step 4: Check the new equations</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_get_equations(model_ref="ws:704bdd6023a4")</span>
+                            </div>
+                            <pre>{
+  "equations": [
+    "dS/dt = -I*S*beta*(1 - epsilon) - S*nu",
+    "dI/dt = E*sigma - I*gamma",
+    "dE/dt = -E*sigma + I*S*beta*(1 - epsilon)",
+    "dR/dt = I*gamma",
+    "dV/dt = S*nu"
+  ]
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>Result:</strong> Two edits produced an SEIRV model, each as its own workspace
+                            version, so the agent can go back to any step. The diff confirms that only
+                            <strong>V</strong> and the <strong>vaccination</strong> transition are new; the paper's
+                            original <code class="inline-code">db:984</code> is untouched. The agent could also call
+                            <code class="inline-code">mira_draw_model_delta</code> to get the same diff as a picture.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Example 3 -->
+                <div class="collapsible" role="button" tabindex="0" aria-expanded="false" onclick="toggleCollapsible(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCollapsible(this)}">
+                    <span class="collapsible-title">🔍 Compare Extraction Methods</span>
+                    <span class="collapsible-icon" aria-hidden="true">▼</span>
+                </div>
+                <div class="collapsible-content" role="region">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"The same paper was extracted several ways. How much do the
+                                resulting models agree?"</em></p>
+                        <p>Behind the scenes, the AI agent runs the following steps using this MCP server:</p>
+
+                        <h3>Step 1: Score pairwise structural similarity</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">mira_compare_models(model_refs=["db:984", "db:249", "db:1676"])</span>
+                            </div>
+                            <pre>{
+  "similarity_scores": [
+    {"models": ["db:984", "db:249"],  "score": 0.25},
+    {"models": ["db:984", "db:1676"], "score": 0.75},
+    {"models": ["db:249", "db:1676"], "score": 0.5}
+  ]
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Check the raw ODEs behind the outlier</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">db_get_odes(pmid="32706790")</span>
+                            </div>
+                            <pre><span class="comment">// SymPy ODE source for each extraction method, including any corrected version,
+// so the agent can see where the marker (db:249) extraction diverges.</span></pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>Insight:</strong> The PMC XML (<code class="inline-code">db:984</code>) and MinerU
+                            text (<code class="inline-code">db:1676</code>) extractions largely agree (0.75), while the
+                            Marker PDF extraction (<code class="inline-code">db:249</code>) differs more. This makes it
+                            easy to pick the most trustworthy version of a paper's model.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Example 4 -->
+                <div class="collapsible" role="button" tabindex="0" aria-expanded="false" onclick="toggleCollapsible(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCollapsible(this)}">
+                    <span class="collapsible-title">🧾 Ad-hoc Questions with SQL</span>
+                    <span class="collapsible-icon" aria-hidden="true">▼</span>
+                </div>
+                <div class="collapsible-content" role="region">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"How big is MIRA-DB? How many papers, models and scenarios does
+                                it have?"</em></p>
+                        <p>Behind the scenes, the AI agent runs the following steps using this MCP server:</p>
+
+                        <h3>Step 1: Read the schema</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">db_describe_schema()</span>
+                            </div>
+                            <pre>## text_references
+- id: INTEGER (PK)
+- pmid: VARCHAR (NOT NULL)
+- title: VARCHAR
+<span class="comment">...</span>
+## mira_template_models
+- id: INTEGER (PK)
+- ode_ref: INTEGER (FK -> ode_expressions.id, NOT NULL)
+- grounded_concepts: JSON (NOT NULL)
+<span class="comment">...</span></pre>
+                        </div>
+
+                        <h3>Step 2: Run a read-only query</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">db_run_sql(sql="SELECT (SELECT count(DISTINCT pmid) FROM text_references) AS papers, (SELECT count(*) FROM mira_template_models) AS models, (SELECT count(*) FROM scenarios) AS scen")</span>
+                            </div>
+                            <pre>{
+  "columns": ["papers", "models", "scen"],
+  "rows": [{"papers": 2477, "models": 3187, "scen": 3404}],
+  "row_count": 1,
+  "truncated": false
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>Safe by design:</strong> <code class="inline-code">db_run_sql</code> accepts a
+                            single <code class="inline-code">SELECT</code>/<code class="inline-code">WITH</code>/<code class="inline-code">EXPLAIN</code>
+                            statement, runs it in a <strong>READ ONLY</strong> transaction with a 15 s timeout, and
+                            truncates long values, so the agent can explore freely without risk to the data.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- How to Connect -->
+            <section class="section" id="connect">
+                <h2>How to Connect</h2>
+
+                <p>Configure your MCP-compatible AI client to connect to this server:</p>
+
+                <div class="tabs" role="tablist">
+                    <button class="tab active" role="tab" aria-selected="true" onclick="switchTab(event, 'claude-code-tab')">Claude Code</button>
+                    <button class="tab" role="tab" aria-selected="false" onclick="switchTab(event, 'claude-desktop-tab')">Claude Desktop</button>
+                    <button class="tab" role="tab" aria-selected="false" onclick="switchTab(event, 'codex-tab')">Codex</button>
+                    <button class="tab" role="tab" aria-selected="false" onclick="switchTab(event, 'openai-tab')">ChatGPT / OpenAI API</button>
+                    <button class="tab" role="tab" aria-selected="false" onclick="switchTab(event, 'antigravity-tab')">Antigravity</button>
+                    <button class="tab" role="tab" aria-selected="false" onclick="switchTab(event, 'cursor-tab')">Cursor</button>
+                    <button class="tab" role="tab" aria-selected="false" onclick="switchTab(event, 'local-tab')">Run locally</button>
+                </div>
+
+                <div id="claude-code-tab" class="tab-content active" role="tabpanel">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Terminal</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'claude-code-cmd')" aria-label="Copy Claude Code command">Copy</button>
+                        </div>
+                        <pre id="claude-code-cmd">claude mcp add --transport http miradb <span class="mcp-url">https://epimodels.io/mcp</span></pre>
+                    </div>
+                </div>
+
+                <div id="claude-desktop-tab" class="tab-content" role="tabpanel">
+                    <p>In Claude Desktop, open <strong>Settings → Connectors → Add custom connector</strong> and
+                        enter this URL:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Connector URL</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'claude-desktop-url')" aria-label="Copy connector URL">Copy</button>
+                        </div>
+                        <pre id="claude-desktop-url"><span class="mcp-url">https://epimodels.io/mcp</span></pre>
+                    </div>
+                </div>
+
+                <div id="codex-tab" class="tab-content" role="tabpanel">
+                    <p>Add the server from the terminal:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Terminal</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'codex-cmd')" aria-label="Copy Codex command">Copy</button>
+                        </div>
+                        <pre id="codex-cmd">codex mcp add miradb --url <span class="mcp-url">https://epimodels.io/mcp</span></pre>
+                    </div>
+                    <p>Or add it to <code class="inline-code">~/.codex/config.toml</code> (or a project's
+                        <code class="inline-code">.codex/config.toml</code>):</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">~/.codex/config.toml</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'codex-toml')" aria-label="Copy Codex configuration">Copy</button>
+                        </div>
+                        <pre id="codex-toml">[mcp_servers.miradb]
+url = "<span class="mcp-url">https://epimodels.io/mcp</span>"</pre>
+                    </div>
+                    <p>Run <code class="inline-code">codex mcp list</code> to check that it was added. The same
+                        configuration is used by the Codex IDE extension.</p>
+                </div>
+
+                <div id="openai-tab" class="tab-content" role="tabpanel">
+                    <h3>ChatGPT</h3>
+                    <p>Open <strong>Settings → Apps &amp; Connectors → Advanced settings</strong> and turn on
+                        <strong>Developer mode</strong>. Then choose <strong>Create</strong>, give the connector a
+                        name, enter the URL below and pick <strong>No authentication</strong>. In a chat, enable the
+                        connector from the <strong>+</strong> menu.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Connector URL</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'chatgpt-url')" aria-label="Copy connector URL">Copy</button>
+                        </div>
+                        <pre id="chatgpt-url"><span class="mcp-url">https://epimodels.io/mcp</span></pre>
+                    </div>
+                    <p>Developer mode is only offered on some ChatGPT plans, and in a workspace an admin may need
+                        to enable it first.</p>
+
+                    <h3>OpenAI API (Responses API)</h3>
+                    <p>Pass the server as a remote MCP tool. OpenAI's servers call it directly, so it must be
+                        reachable from the internet.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Python</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'openai-code')" aria-label="Copy OpenAI API example">Copy</button>
+                        </div>
+                        <pre id="openai-code">from openai import OpenAI
+
+client = OpenAI()
+response = client.responses.create(
+    model="gpt-5",
+    tools=[{
+        "type": "mcp",
+        "server_label": "miradb",
+        "server_url": "<span class="mcp-url">https://epimodels.io/mcp</span>",
+        "require_approval": "never",
+    }],
+    input="Find a COVID-19 SEIR model for South Africa and simulate it for 100 days.",
+)
+print(response.output_text)</pre>
+                    </div>
+                </div>
+
+                <div id="antigravity-tab" class="tab-content" role="tabpanel">
+                    <p>In the Agent panel, open the <strong>⋯</strong> menu → <strong>MCP Servers</strong> →
+                        <strong>Manage MCP Servers</strong> → <strong>View raw config</strong>, and add the server
+                        to <code class="inline-code">mcp_config.json</code>
+                        (usually <code class="inline-code">~/.gemini/antigravity/mcp_config.json</code>):</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">mcp_config.json</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'antigravity-code')" aria-label="Copy Antigravity configuration">Copy</button>
+                        </div>
+                        <pre id="antigravity-code">{
+  "mcpServers": {
+    "miradb": {
+      "serverUrl": "<span class="mcp-url">https://epimodels.io/mcp</span>"
+    }
+  }
+}</pre>
+                    </div>
+                    <p>Antigravity uses <code class="inline-code">serverUrl</code> for remote servers, not
+                        <code class="inline-code">url</code>, so a configuration copied from another client won't
+                        load. Restart the agent session or refresh the MCP server list after saving.</p>
+                </div>
+
+                <div id="cursor-tab" class="tab-content" role="tabpanel">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">~/.cursor/mcp.json</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'cursor-code')" aria-label="Copy Cursor configuration">Copy</button>
+                        </div>
+                        <pre id="cursor-code">{
+  "mcpServers": {
+    "miradb": {
+      "url": "<span class="mcp-url">https://epimodels.io/mcp</span>"
+    }
+  }
+}</pre>
+                    </div>
+                </div>
+
+                <div id="local-tab" class="tab-content" role="tabpanel">
+                    <p>To run the server yourself over stdio against your own MIRA-DB instance:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Terminal</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'local-code')" aria-label="Copy local install commands">Copy</button>
+                        </div>
+                        <pre id="local-code">python -m pip install "miradb[mcp] @ git+https://github.com/gyorilab/miradb.git"
+claude mcp add miradb -- miradb-mcp --db primary</pre>
+                    </div>
+                    <p><code class="inline-code">--db</code> names a section of
+                        <code class="inline-code">~/.config/mira/db_config.ini</code>, or
+                        <code class="inline-code">primary</code> for the <code class="inline-code">MIRADB_DB_*</code>
+                        environment variables. A role with only <code class="inline-code">SELECT</code> grants is
+                        recommended.</p>
+                </div>
+
+                <div class="info-box">
+                    <h3>Connection Details</h3>
+                    <p><strong>Endpoint:</strong> <code class="inline-code">POST <span class="mcp-url">https://epimodels.io/mcp</span></code></p>
+                    <p><strong>Transport:</strong> Streamable HTTP</p>
+                    <p><strong>Authentication:</strong> None required; all database access is read-only</p>
+                    <p><strong>Workspace:</strong> Derived <code class="inline-code">ws:</code> models and
+                        simulations are kept in server memory and are not persisted</p>
+                </div>
+            </section>
+
+            <!-- Learn More -->
+            <section class="section" id="learn-more">
+                <h2>Learn More</h2>
+
+                <div class="info-box">
+                    <h3>Resources</h3>
+                    <ul>
+                        <li><strong>MIRA-DB explorer:</strong> <a href="https://epimodels.io" target="_blank">https://epimodels.io</a></li>
+                        <li><strong>MIRA-DB code (this server):</strong> <a href="https://github.com/gyorilab/miradb" target="_blank">https://github.com/gyorilab/miradb</a></li>
+                        <li><strong>MIRA:</strong> <a href="https://github.com/gyorilab/mira" target="_blank">https://github.com/gyorilab/mira</a>
+                            · <a href="https://miramodel.readthedocs.io" target="_blank">documentation</a></li>
+                        <li><strong>MCP specification:</strong> <a href="https://modelcontextprotocol.io" target="_blank">https://modelcontextprotocol.io</a></li>
+                    </ul>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>MIRA-DB MCP Server</strong> | Model Context Protocol</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">
+                Developed by <a href="https://github.com/gyorilab" target="_blank">Gyori Lab</a> |
+                <a href="https://github.com/gyorilab/miradb/issues" target="_blank">Report Issues</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Show this server's own /mcp URL (e.g. when running locally) instead of the public one.
+        (function () {
+            if (!/^https?:$/.test(window.location.protocol)) return;
+            const url = window.location.origin + '/mcp';
+            for (const el of document.querySelectorAll('.mcp-url')) {
+                el.textContent = url;
+            }
+        })();
+
+        // Keep the tool counts in step with the server (falls back to the numbers in the HTML).
+        if (/^https?:$/.test(window.location.protocol)) {
+            fetch('docs.json')
+                .then(r => r.ok ? r.json() : Promise.reject())
+                .then(data => {
+                    const counts = { all: data.tools.length };
+                    for (const t of data.tools) counts[t.group] = (counts[t.group] || 0) + 1;
+                    for (const el of document.querySelectorAll('[data-count]')) {
+                        el.textContent = counts[el.dataset.count] || 0;
+                    }
+                })
+                .catch(() => {});
+        }
+
+        function switchTab(evt, tabName) {
+            for (const content of document.getElementsByClassName('tab-content')) {
+                content.classList.remove('active');
+            }
+            for (const tab of document.getElementsByClassName('tab')) {
+                tab.classList.remove('active');
+                tab.setAttribute('aria-selected', 'false');
+            }
+            document.getElementById(tabName).classList.add('active');
+            evt.currentTarget.classList.add('active');
+            evt.currentTarget.setAttribute('aria-selected', 'true');
+        }
+
+        function toggleCollapsible(element) {
+            const isOpen = element.getAttribute('aria-expanded') === 'true';
+            element.setAttribute('aria-expanded', String(!isOpen));
+            element.nextElementSibling.classList.toggle('open');
+        }
+
+        function copyCode(button, codeId) {
+            const code = document.getElementById(codeId).textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 2000);
+            });
+        }
+    </script>
+
+</body>
+
+</html>

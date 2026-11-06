@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIRA-DB Tool Reference</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2b7a86;
+            --primary-vivid: #4dafbc;
+            --primary-dark: #1e6570;
+            --primary-light: #e6f7f8;
+            --accent: #f5b461;
+            --bg-page: #ffffff;
+            --bg-light: #f8fafc;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --required: #b42318;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+            --g-query-bg: #eef2f6;
+            --g-query-fg: #475467;
+            --g-inspect-bg: #e6f7f8;
+            --g-inspect-fg: #1e6570;
+            --g-edit-bg: #e8f0fe;
+            --g-edit-fg: #1d4ed8;
+            --g-transform-bg: #f1ecfe;
+            --g-transform-fg: #6d28d9;
+            --g-compare-bg: #fdf1e2;
+            --g-compare-fg: #9a5b0b;
+            --g-simulate-bg: #e7f8ef;
+            --g-simulate-fg: #047857;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #5cc0cc;
+                --primary-dark: #8fd6de;
+                --primary-light: #14343a;
+                --bg-page: #0f172a;
+                --bg-light: #1e293b;
+                --text: #e2e8f0;
+                --text-light: #94a3b8;
+                --border: #334155;
+                --required: #f97066;
+
+                --g-query-bg: #263244;
+                --g-query-fg: #cbd5e1;
+                --g-inspect-bg: #14343a;
+                --g-inspect-fg: #8fd6de;
+                --g-edit-bg: #1e2f55;
+                --g-edit-fg: #a5c0fb;
+                --g-transform-bg: #2e2350;
+                --g-transform-fg: #c4b5fd;
+                --g-compare-bg: #3b2a12;
+                --g-compare-fg: #f5c77e;
+                --g-simulate-bg: #10342a;
+                --g-simulate-fg: #6ee7b7;
+            }
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg-page);
+            min-height: 100vh;
+        }
+
+        a {
+            color: var(--primary);
+        }
+
+        code,
+        .mono {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        /* Top menu (matches the landing page) */
+        .topnav {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 40px;
+            background: var(--bg-page);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .topnav .brand {
+            font-weight: 700;
+            color: var(--text);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .topnav nav {
+            display: flex;
+            align-items: center;
+            gap: 4px 18px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .topnav nav a {
+            color: var(--text-light);
+            text-decoration: none;
+            font-size: 0.92em;
+            font-weight: 500;
+        }
+
+        .topnav nav a:hover {
+            color: var(--primary);
+        }
+
+        .topnav nav a.nav-connect {
+            background: var(--accent);
+            color: #3b2600;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .content {
+            padding: 32px 40px 48px;
+        }
+
+        h1 {
+            font-size: 1.9em;
+            color: var(--primary-dark);
+            letter-spacing: -0.01em;
+        }
+
+        .lead {
+            color: var(--text-light);
+            margin: 6px 0 22px;
+        }
+
+        h2 {
+            font-size: 1.3em;
+            color: var(--primary-dark);
+            margin: 36px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid var(--primary-light);
+            scroll-margin-top: 70px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .controls input[type="search"] {
+            flex: 1 1 240px;
+            min-width: 0;
+            font: inherit;
+            font-size: 0.95em;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-page);
+            color: var(--text);
+        }
+
+        .controls input[type="search"]:focus {
+            outline: 2px solid var(--primary-vivid);
+            outline-offset: -1px;
+        }
+
+        .btn {
+            font: inherit;
+            font-size: 0.88em;
+            padding: 7px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-light);
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            border-color: var(--primary-vivid);
+        }
+
+        .pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 18px;
+        }
+
+        .pill {
+            font: inherit;
+            font-size: 0.85em;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--bg-page);
+            color: var(--text-light);
+            cursor: pointer;
+        }
+
+        .pill[aria-pressed="true"] {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .pill .n {
+            opacity: 0.75;
+            margin-left: 4px;
+        }
+
+        /* Tool entries */
+        .tool {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            background: var(--bg-page);
+            scroll-margin-top: 70px;
+        }
+
+        .tool[open] {
+            border-color: var(--primary-vivid);
+        }
+
+        .tool summary {
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            cursor: pointer;
+            min-width: 0;
+        }
+
+        .tool summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .tool summary::after {
+            content: "▾";
+            color: var(--text-light);
+            margin-left: auto;
+            transition: transform 0.15s;
+            flex-shrink: 0;
+        }
+
+        .tool[open] summary::after {
+            transform: rotate(180deg);
+        }
+
+        .tag {
+            font-size: 0.72em;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .tool-name {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-weight: 600;
+            font-size: 0.92em;
+            flex-shrink: 0;
+        }
+
+        .summary-line {
+            color: var(--text-light);
+            font-size: 0.88em;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .tool-body {
+            border-top: 1px solid var(--border);
+            padding: 14px;
+        }
+
+        .tool-desc {
+            font-size: 0.93em;
+            margin-bottom: 14px;
+        }
+
+        .tool-desc p + p {
+            margin-top: 8px;
+        }
+
+        .no-params {
+            color: var(--text-light);
+            font-size: 0.9em;
+        }
+
+        .params {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.86em;
+        }
+
+        .params th {
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-light);
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .params td {
+            padding: 7px 8px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+            overflow-wrap: anywhere;
+        }
+
+        .params tr:last-child td {
+            border-bottom: none;
+        }
+
+        .params .pname {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .req {
+            color: var(--required);
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 4px;
+        }
+
+        .type,
+        .default {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-size: 0.95em;
+            color: var(--primary-dark);
+        }
+
+        .default {
+            color: var(--text-light);
+        }
+
+        .anchor {
+            font-size: 0.82em;
+            color: var(--text-light);
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        .empty,
+        .status {
+            color: var(--text-light);
+            padding: 16px 0;
+        }
+
+        /* Resources */
+        .res {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 8px;
+        }
+
+        .res-item {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 14px;
+            background: var(--bg-light);
+            min-width: 0;
+        }
+
+        .res-uri {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-weight: 600;
+            font-size: 0.9em;
+            overflow-wrap: anywhere;
+        }
+
+        .res-mime {
+            font-size: 0.78em;
+            color: var(--text-light);
+            margin-left: 8px;
+        }
+
+        .res-desc {
+            color: var(--text-light);
+            font-size: 0.9em;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 24px 40px;
+            border-top: 1px solid var(--border);
+            color: var(--text-light);
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 640px) {
+            .topnav {
+                padding: 10px 16px;
+            }
+
+            .topnav nav a:not(.nav-connect):not(.nav-home) {
+                display: none;
+            }
+
+            .content {
+                padding: 24px 16px 40px;
+            }
+
+            .summary-line {
+                display: none;
+            }
+
+            /* Stack the parameter table into cards */
+            .params thead {
+                display: none;
+            }
+
+            .params,
+            .params tbody,
+            .params tr,
+            .params td {
+                display: block;
+                width: 100%;
+            }
+
+            .params tr {
+                border-bottom: 1px solid var(--border);
+                padding: 8px 0;
+            }
+
+            .params tr:last-child {
+                border-bottom: none;
+            }
+
+            .params td {
+                border: none;
+                padding: 2px 0;
+            }
+
+            .params td[data-label]::before {
+                content: attr(data-label) ": ";
+                color: var(--text-light);
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header class="topnav">
+            <a class="brand" href="./">MIRA-DB MCP</a>
+            <nav aria-label="Page sections">
+                <a class="nav-home" href="./">Overview</a>
+                <a href="#tools">Tools</a>
+                <a href="#resources">Resources</a>
+                <a class="nav-connect" href="./#connect">Connect</a>
+            </nav>
+        </header>
+
+        <main class="content">
+            <h1>Tool reference</h1>
+            <p class="lead" id="lead">Every tool and resource this MCP server exposes, generated from the server's own
+                definitions.</p>
+
+            <h2 id="tools">Tools</h2>
+            <div class="controls">
+                <input type="search" id="filter" placeholder="Filter by name or description, e.g. stratify" aria-label="Filter tools">
+                <button class="btn" id="toggle-all" type="button">Expand all</button>
+            </div>
+            <div class="pills" id="groups" role="group" aria-label="Tool groups"></div>
+            <div id="tool-list"><p class="status">Loading tools…</p></div>
+
+            <h2 id="resources">Resources</h2>
+            <p class="lead" style="margin-top: 0;">Read-only data an MCP client can fetch by URI.</p>
+            <div class="res" id="resource-list"><p class="status">Loading resources…</p></div>
+        </main>
+
+        <div class="footer">
+            <p>Generated from <a href="docs.json">docs.json</a> · <a href="./">Back to overview</a> ·
+                <a href="https://github.com/gyorilab/miradb/issues" target="_blank">Report issues</a></p>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            let data = null;
+            let activeGroup = 'all';
+
+            function el(tag, attrs, children) {
+                const node = document.createElement(tag);
+                for (const [k, v] of Object.entries(attrs || {})) {
+                    if (k === 'class') node.className = v;
+                    else if (k === 'text') node.textContent = v;
+                    else node.setAttribute(k, v);
+                }
+                for (const child of [].concat(children || [])) {
+                    if (child == null) continue;
+                    node.append(child instanceof Node ? child : document.createTextNode(child));
+                }
+                return node;
+            }
+
+            // Render a JSON Schema fragment as a short type string.
+            function typeOf(schema) {
+                if (!schema) return 'any';
+                if (schema.enum) return schema.enum.map(v => JSON.stringify(v)).join(' | ');
+                if (schema.anyOf) {
+                    const parts = schema.anyOf.filter(s => s.type !== 'null').map(typeOf);
+                    const nullable = schema.anyOf.some(s => s.type === 'null');
+                    return parts.join(' | ') + (nullable ? ' | null' : '');
+                }
+                const t = schema.type;
+                // Parenthesize unions inside containers: object of (number | string)
+                const inner = s => { const x = typeOf(s); return x.includes(' | ') ? '(' + x + ')' : x; };
+                if (t === 'array') return 'array of ' + inner(schema.items);
+                if (t === 'object') {
+                    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+                        return 'object of ' + inner(schema.additionalProperties);
+                    }
+                    return 'object';
+                }
+                return Array.isArray(t) ? t.join(' | ') : (t || 'any');
+            }
+
+            function constraints(schema) {
+                const out = [];
+                const src = schema.anyOf ? schema.anyOf.find(s => s.type !== 'null') || schema : schema;
+                if (src.exclusiveMinimum !== undefined) out.push('> ' + src.exclusiveMinimum);
+                if (src.minimum !== undefined) out.push('≥ ' + src.minimum);
+                if (src.exclusiveMaximum !== undefined) out.push('< ' + src.exclusiveMaximum);
+                if (src.maximum !== undefined) out.push('≤ ' + src.maximum);
+                if (src.minItems !== undefined) out.push('at least ' + src.minItems + ' items');
+                if (src.maxItems !== undefined) out.push('at most ' + src.maxItems + ' items');
+                return out.join(', ');
+            }
+
+            function firstSentence(text) {
+                const line = (text || '').split(/\n\s*\n/)[0].replace(/\s+/g, ' ').trim();
+                const m = line.match(/^.*?[.!?](\s|$)/);
+                return m ? m[0].trim() : line;
+            }
+
+            function groupLabel(key) {
+                const g = data.groups.find(g => g.key === key);
+                return g ? g.label : key;
+            }
+
+            function renderParams(schema) {
+                const props = (schema && schema.properties) || {};
+                const names = Object.keys(props);
+                if (!names.length) return el('p', { class: 'no-params', text: 'No parameters.' });
+                const required = new Set(schema.required || []);
+                // Required parameters first, otherwise keep the server's order
+                names.sort((a, b) => (required.has(b) - required.has(a)));
+                const rows = names.map(name => {
+                    const p = props[name];
+                    const c = constraints(p);
+                    return el('tr', {}, [
+                        el('td', { class: 'pname' }, [name, required.has(name) ? el('span', { class: 'req', text: 'required' }) : null]),
+                        el('td', { 'data-label': 'Type' }, [el('span', { class: 'type', text: typeOf(p) }), c ? el('div', { class: 'default', text: c }) : null]),
+                        el('td', { 'data-label': 'Default' }, [
+                            'default' in p ? el('span', { class: 'default', text: JSON.stringify(p.default) }) : el('span', { class: 'default', text: '–' })
+                        ]),
+                        el('td', p.description ? { 'data-label': 'Description', text: p.description } : {}),
+                    ]);
+                });
+                return el('table', { class: 'params' }, [
+                    el('thead', {}, el('tr', {}, ['Parameter', 'Type', 'Default', 'Description'].map(h => el('th', { text: h })))),
+                    el('tbody', {}, rows),
+                ]);
+            }
+
+            function renderTool(tool) {
+                const details = el('details', { class: 'tool', id: tool.name, 'data-group': tool.group });
+                const summary = el('summary', {}, [
+                    el('span', {
+                        class: 'tag',
+                        style: `background: var(--g-${tool.group}-bg); color: var(--g-${tool.group}-fg);`,
+                        text: groupLabel(tool.group),
+                    }),
+                    el('span', { class: 'tool-name', text: tool.name }),
+                    el('span', { class: 'summary-line', text: firstSentence(tool.description) }),
+                ]);
+                // Docstrings are hard-wrapped: keep paragraph breaks, rejoin the lines
+                const paragraphs = (tool.description || '').split(/\n\s*\n/)
+                    .map(p => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
+                const body = el('div', { class: 'tool-body' }, [
+                    el('div', { class: 'tool-desc' }, paragraphs.map(p => el('p', { text: p }))),
+                    renderParams(tool.input_schema),
+                    el('a', { class: 'anchor', href: '#' + tool.name, text: 'Link to this tool' }),
+                ]);
+                details.append(summary, body);
+                details._search = (tool.name + ' ' + tool.description).toLowerCase();
+                return details;
+            }
+
+            function renderPills() {
+                const box = document.getElementById('groups');
+                box.replaceChildren();
+                const counts = {};
+                data.tools.forEach(t => { counts[t.group] = (counts[t.group] || 0) + 1; });
+                const entries = [{ key: 'all', label: 'All', n: data.tools.length }]
+                    .concat(data.groups.filter(g => counts[g.key]).map(g => ({ key: g.key, label: g.label, n: counts[g.key] })));
+                for (const g of entries) {
+                    const b = el('button', { class: 'pill', type: 'button', 'aria-pressed': String(g.key === activeGroup) },
+                        [g.label, el('span', { class: 'n', text: g.n })]);
+                    b.addEventListener('click', () => { activeGroup = g.key; renderPills(); applyFilter(); });
+                    box.append(b);
+                }
+            }
+
+            function applyFilter() {
+                const q = document.getElementById('filter').value.trim().toLowerCase();
+                let shown = 0;
+                for (const d of document.querySelectorAll('#tool-list details')) {
+                    const ok = (activeGroup === 'all' || d.dataset.group === activeGroup) && (!q || d._search.includes(q));
+                    d.hidden = !ok;
+                    if (ok) shown++;
+                }
+                document.getElementById('no-match').hidden = shown > 0;
+            }
+
+            function render() {
+                document.getElementById('lead').textContent =
+                    `All ${data.tools.length} tools and ${data.resources.length} resources this MCP server exposes, ` +
+                    `generated from the server's own definitions, so this page always matches what clients see.`;
+
+                const list = document.getElementById('tool-list');
+                const order = Object.fromEntries(data.groups.map((g, i) => [g.key, i]));
+                const tools = data.tools.slice().sort((a, b) =>
+                    (order[a.group] - order[b.group]) || a.name.localeCompare(b.name));
+                list.replaceChildren(...tools.map(renderTool),
+                    el('p', { class: 'empty', id: 'no-match', hidden: '', text: 'No tools match this filter.' }));
+                renderPills();
+
+                const res = document.getElementById('resource-list');
+                res.replaceChildren(...data.resources.map(r => el('div', { class: 'res-item' }, [
+                    el('div', {}, [el('span', { class: 'res-uri', text: r.uri }), r.mime_type ? el('span', { class: 'res-mime', text: r.mime_type }) : null]),
+                    el('div', { class: 'res-desc', text: r.description }),
+                ])));
+
+                openFromHash();
+            }
+
+            function openFromHash() {
+                const id = decodeURIComponent(location.hash.slice(1));
+                const target = id && document.getElementById(id);
+                if (target && target.tagName === 'DETAILS') {
+                    target.open = true;
+                    target.scrollIntoView();
+                }
+            }
+
+            document.getElementById('filter').addEventListener('input', applyFilter);
+            document.getElementById('toggle-all').addEventListener('click', e => {
+                const all = [...document.querySelectorAll('#tool-list details:not([hidden])')];
+                const open = !all.every(d => d.open);
+                all.forEach(d => { d.open = open; });
+                e.currentTarget.textContent = open ? 'Collapse all' : 'Expand all';
+            });
+            window.addEventListener('hashchange', openFromHash);
+
+            fetch('docs.json')
+                .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(json => { data = json; render(); })
+                .catch(() => {
+                    document.getElementById('tool-list').replaceChildren(
+                        el('p', { class: 'status', text: "Couldn't load the tool list from docs.json. Reload to try again." }));
+                    document.getElementById('resource-list').replaceChildren();
+                });
+        })();
+    </script>
+</body>
+
+</html>

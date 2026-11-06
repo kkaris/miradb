@@ -36,3 +36,6 @@ Repository = "https://github.com/gyorilab/miradb"
 
 [tool.setuptools.packages.find]
 include = ["miradb*"]
+
+[tool.setuptools.package-data]
+"miradb.mcp" = ["templates/*.html"]
